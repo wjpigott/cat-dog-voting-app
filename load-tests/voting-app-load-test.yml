@@ -1,0 +1,67 @@
+config:
+  target: "{{ $processEnvironment.TARGET_URL || 'http://localhost' }}"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 10
+      name: "Ramp up load"
+    - duration: 300
+      arrivalRate: 15
+      name: "Sustained load"
+    - duration: 60
+      arrivalRate: 20
+      name: "Peak load"
+  defaults:
+    headers:
+      User-Agent: "Artillery Load Test"
+
+scenarios:
+  - name: "Vote for cats and dogs"
+    weight: 70
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
+      - think: 2
+      - post:
+          url: "/vote"
+          json:
+            vote: "{{ $randomString(cat,dog) }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/results"
+          expect:
+            - statusCode: 200
+
+  - name: "Health check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - hasProperty: "status"
+
+  - name: "Load test scenario"
+    weight: 10
+    flow:
+      - loop:
+          - get:
+              url: "/"
+          - think: 1
+          - post:
+              url: "/vote"
+              json:
+                vote: "cat"
+          - think: 1
+          - post:
+              url: "/vote"
+              json:
+                vote: "dog"
+          - think: 2
+        count: 5

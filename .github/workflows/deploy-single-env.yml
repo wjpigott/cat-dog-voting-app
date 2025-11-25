@@ -1,0 +1,182 @@
+name: Deploy to Single Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'onprem'
+        type: choice
+        options:
+        - onprem
+        - azure
+      run_load_test:
+        description: 'Run load test after deployment'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cat-dog-voting-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build
+    runs-on: ${{ inputs.environment == 'onprem' && 'self-hosted' || 'ubuntu-latest' }}
+    environment: ${{ inputs.environment }}
+    
+    outputs:
+      service-url: ${{ steps.get-url.outputs.url }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Deploy to On-Premises (Azure Arc)
+      if: inputs.environment == 'onprem'
+      run: |
+        sed -i "s|image:.*|image: ${{ needs.build.outputs.image-tag }}|g" k8s/onprem/voting-app-deployment.yaml
+        kubectl apply -f k8s/base/ --context=arc-cluster
+        kubectl apply -f k8s/onprem/ --context=arc-cluster
+        kubectl rollout status deployment/voting-app --context=arc-cluster --timeout=300s
+
+    - name: Deploy to Azure (AKS)
+      if: inputs.environment == 'azure'
+      run: |
+        az login --service-principal -u ${{ vars.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ vars.AZURE_TENANT_ID }}
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }}
+        sed -i "s|image:.*|image: ${{ needs.build.outputs.image-tag }}|g" k8s/azure/voting-app-deployment.yaml
+        kubectl apply -f k8s/base/
+        kubectl apply -f k8s/azure/
+        kubectl rollout status deployment/voting-app --timeout=300s
+
+    - name: Get Service URL
+      id: get-url
+      run: |
+        if [ "${{ inputs.environment }}" == "onprem" ]; then
+          URL=$(kubectl get svc voting-app-lb --context=arc-cluster -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+        else
+          URL=$(kubectl get svc voting-app-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+        fi
+        echo "url=http://$URL" >> $GITHUB_OUTPUT
+        echo "🎉 Deployment successful! Service URL: http://$URL"
+
+  load-test:
+    if: inputs.run_load_test
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Artillery
+      run: npm install -g artillery@latest
+
+    - name: Wait for service to be ready
+      run: |
+        echo "Waiting for service to be ready..."
+        sleep 60
+
+    - name: Run Load Test
+      env:
+        TARGET_URL: ${{ needs.deploy.outputs.service-url }}
+      run: |
+        echo "Running load test against: $TARGET_URL"
+        artillery run load-tests/voting-app-load-test.yml --output results.json
+
+    - name: Generate Load Test Report
+      run: |
+        artillery report results.json --output report.html
+
+    - name: Upload Load Test Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: load-test-results-${{ inputs.environment }}
+        path: |
+          results.json
+          report.html
+
+    - name: Comment Load Test Results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const results = JSON.parse(fs.readFileSync('results.json', 'utf8'));
+            const summary = results.aggregate;
+            
+            const comment = `## 🧪 Load Test Results - ${{ inputs.environment }}
+            
+            **Target**: ${{ needs.deploy.outputs.service-url }}
+            
+            | Metric | Value |
+            |--------|-------|
+            | Total Requests | ${summary.counters['http.requests'] || 'N/A'} |
+            | Successful Requests | ${summary.counters['http.codes.200'] || 'N/A'} |
+            | Failed Requests | ${summary.counters['http.codes.500'] || '0'} |
+            | Average Response Time | ${summary.latency?.mean ? Math.round(summary.latency.mean) + 'ms' : 'N/A'} |
+            | 95th Percentile | ${summary.latency?.p95 ? Math.round(summary.latency.p95) + 'ms' : 'N/A'} |
+            
+            📊 [Full Report Available in Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not parse results or create comment:', error.message);
+          }
