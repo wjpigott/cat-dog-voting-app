@@ -1,0 +1,180 @@
+name: Clean Deploy to Azure AKS
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cat-dog-voting-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.meta.outputs.digest }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  clean-deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: azure
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }} --overwrite-existing
+
+    - name: Clean Up All Previous Deployments
+      run: |
+        echo "🧹 Cleaning up previous deployments..."
+        
+        # Delete all voting app related resources
+        kubectl delete deployment voting-app --ignore-not-found=true
+        kubectl delete deployment voting-app-simple --ignore-not-found=true
+        kubectl delete service voting-app-service --ignore-not-found=true
+        kubectl delete service voting-app-lb --ignore-not-found=true
+        kubectl delete service voting-app-simple-lb --ignore-not-found=true
+        kubectl delete hpa voting-app-hpa --ignore-not-found=true
+        
+        # Wait for cleanup
+        sleep 30
+        
+        echo "✅ Cleanup completed"
+
+    - name: Deploy Fresh Application
+      env:
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Get the first image tag
+        IMAGE_TAG=$(echo "${{ needs.build.outputs.image-tag }}" | head -n1)
+        echo "🚀 Deploying fresh application with image: $IMAGE_TAG"
+        
+        # Create image pull secret
+        kubectl create secret docker-registry ghcr-secret \
+          --docker-server=ghcr.io \
+          --docker-username=$GITHUB_ACTOR \
+          --docker-password=$GITHUB_TOKEN \
+          --docker-email=$GITHUB_ACTOR@users.noreply.github.com \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Create a fresh deployment manifest
+        cat << EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: voting-app
+          labels:
+            app: voting-app
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: voting-app
+          template:
+            metadata:
+              labels:
+                app: voting-app
+            spec:
+              imagePullSecrets:
+              - name: ghcr-secret
+              containers:
+              - name: voting-app
+                image: $IMAGE_TAG
+                ports:
+                - containerPort: 5000
+                env:
+                - name: ENVIRONMENT
+                  value: "azure"
+                - name: CLUSTER_TYPE
+                  value: "aks"
+                resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "256Mi"
+                    cpu: "500m"
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: voting-app-lb
+          labels:
+            app: voting-app
+        spec:
+          type: LoadBalancer
+          ports:
+          - port: 80
+            targetPort: 5000
+            protocol: TCP
+          selector:
+            app: voting-app
+        EOF
+        
+        echo "⏳ Waiting for deployment to be ready..."
+        kubectl wait --for=condition=available --timeout=300s deployment/voting-app
+        
+        echo "📋 Deployment status:"
+        kubectl get pods -l app=voting-app
+        kubectl get services -l app=voting-app
+        
+        # Get LoadBalancer IP
+        echo "🌐 Getting LoadBalancer IP..."
+        for i in {1..60}; do
+          EXTERNAL_IP=$(kubectl get svc voting-app-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
+            echo "✅ Application is ready!"
+            echo "🎯 URL: http://$EXTERNAL_IP"
+            
+            # Test the application
+            echo "🧪 Testing application..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$EXTERNAL_IP" || echo "000")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ Application is responding successfully!"
+            else
+              echo "⚠️ Application returned HTTP $HTTP_STATUS"
+            fi
+            break
+          fi
+          echo "⏳ Waiting for LoadBalancer IP... (attempt $i/60)"
+          sleep 5
+        done
+        
+        echo "🎊 Deployment completed successfully!"
