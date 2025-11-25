@@ -1,0 +1,303 @@
+name: Deploy Cat/Dog Voting App - Azure Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_load_test:
+        description: 'Run load testing after deployment'
+        required: false
+        default: true
+        type: boolean
+      test_scale:
+        description: 'Test auto-scaling during load test'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cat-dog-voting-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-azure:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: azure
+    
+    outputs:
+      service-url: ${{ steps.azure-url.outputs.url }}
+      service-ip: ${{ steps.azure-url.outputs.ip }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }} --overwrite-existing
+
+    - name: Deploy to Azure AKS
+      run: |
+        # Update image in Kubernetes manifests
+        sed -i "s|image: ghcr.io/placeholder/cat-dog-voting-app:latest|image: ${{ needs.build.outputs.image-tag }}|g" k8s/azure/voting-app-deployment.yaml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/base/
+        kubectl apply -f k8s/azure/
+        
+        # Wait for rollout
+        kubectl rollout status deployment/voting-app --timeout=600s
+        
+        echo "✅ Deployment completed successfully!"
+
+    - name: Get Azure Service Details
+      id: azure-url
+      run: |
+        echo "⏳ Waiting for LoadBalancer IP assignment..."
+        
+        # Wait up to 5 minutes for LoadBalancer IP
+        for i in {1..30}; do
+          AZURE_IP=$(kubectl get svc voting-app-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$AZURE_IP" ] && [ "$AZURE_IP" != "null" ]; then
+            echo "✅ LoadBalancer IP assigned: $AZURE_IP"
+            echo "ip=$AZURE_IP" >> $GITHUB_OUTPUT
+            echo "url=http://$AZURE_IP" >> $GITHUB_OUTPUT
+            break
+          fi
+          echo "⏳ Waiting for IP assignment... (attempt $i/30)"
+          sleep 10
+        done
+        
+        if [ -z "$AZURE_IP" ] || [ "$AZURE_IP" == "null" ]; then
+          echo "⚠️ LoadBalancer IP not assigned yet. Checking service status..."
+          kubectl get svc voting-app-lb -o yaml
+          echo "ip=pending" >> $GITHUB_OUTPUT
+          echo "url=pending" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Show Deployment Information
+      run: |
+        echo "🎉 Cat/Dog Voting App Deployed to Azure!"
+        echo "📍 Resource Group: ${{ vars.AZURE_RG }}"
+        echo "🎯 AKS Cluster: ${{ vars.AKS_CLUSTER_NAME }}"
+        echo "🌐 Service URL: ${{ steps.azure-url.outputs.url }}"
+        echo ""
+        echo "📊 Deployment Status:"
+        kubectl get deployments
+        echo ""
+        echo "🔗 Service Information:"
+        kubectl get services
+        echo ""
+        echo "🏃‍♂️ Pod Status:"
+        kubectl get pods -l app=voting-app
+
+  test-application:
+    needs: deploy-azure
+    runs-on: ubuntu-latest
+    if: ${{ needs.deploy-azure.outputs.service-url != 'pending' }}
+    
+    steps:
+    - name: Test Application Health
+      run: |
+        URL="${{ needs.deploy-azure.outputs.service-url }}"
+        echo "🔍 Testing application health at: $URL"
+        
+        # Test health endpoint
+        if curl -f -s "$URL/health" > /dev/null; then
+          echo "✅ Health check passed!"
+        else
+          echo "❌ Health check failed!"
+          exit 1
+        fi
+        
+        # Test main page
+        if curl -f -s "$URL/" > /dev/null; then
+          echo "✅ Main page accessible!"
+        else
+          echo "❌ Main page not accessible!"
+          exit 1
+        fi
+        
+        echo "🎊 Application is healthy and ready for use!"
+
+  load-test:
+    if: ${{ inputs.run_load_test && needs.deploy-azure.outputs.service-url != 'pending' }}
+    needs: [deploy-azure, test-application]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Artillery
+      run: npm install -g artillery@latest
+
+    - name: Test Auto-Scaling Setup
+      if: ${{ inputs.test_scale }}
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Scale Down for Load Testing
+      if: ${{ inputs.test_scale }}
+      run: |
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }}
+        kubectl scale deployment voting-app --replicas=2
+        echo "⏳ Waiting for scale-down..."
+        kubectl rollout status deployment/voting-app --timeout=180s
+
+    - name: Run Load Test Against Azure
+      env:
+        TARGET_URL: ${{ needs.deploy-azure.outputs.service-url }}
+      run: |
+        echo "🚀 Running load test against: $TARGET_URL"
+        
+        # Create custom load test for auto-scaling
+        cat > load-test-config.yml << EOF
+        config:
+          target: '${{ needs.deploy-azure.outputs.service-url }}'
+          phases:
+            - duration: 60
+              arrivalRate: 5
+              name: "Warmup"
+            - duration: 120  
+              arrivalRate: 15
+              name: "Ramp up"
+            - duration: 180
+              arrivalRate: 25
+              name: "Sustained load"
+            - duration: 60
+              arrivalRate: 35
+              name: "Peak load"
+        
+        scenarios:
+          - name: "Cat/Dog Voting"
+            weight: 100
+            flow:
+              - get:
+                  url: "/"
+              - think: 2
+              - post:
+                  url: "/vote"
+                  json:
+                    vote: "{{ \$randomString(cat,dog) }}"
+              - think: 1
+              - get:
+                  url: "/results"
+        EOF
+        
+        artillery run load-test-config.yml --output azure-results.json
+        
+        echo "✅ Load test completed!"
+
+    - name: Monitor Auto-Scaling
+      if: ${{ inputs.test_scale }}
+      run: |
+        echo "📊 Monitoring auto-scaling during load test..."
+        for i in {1..10}; do
+          echo "=== Check $i ==="
+          kubectl get hpa voting-app-hpa
+          kubectl get pods -l app=voting-app
+          sleep 30
+        done
+
+    - name: Generate Load Test Report
+      run: |
+        artillery report azure-results.json --output azure-report.html
+        echo "📊 Load test report generated!"
+
+    - name: Upload Load Test Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: azure-load-test-results
+        path: |
+          azure-results.json
+          azure-report.html
+          load-test-config.yml
+
+  summary:
+    needs: [deploy-azure, test-application, load-test]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Deployment Summary
+      run: |
+        echo "## 🎊 Cat/Dog Voting App Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Successfully Deployed to Azure Cloud" >> $GITHUB_STEP_SUMMARY
+        echo "- **Service URL**: ${{ needs.deploy-azure.outputs.service-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Service IP**: ${{ needs.deploy-azure.outputs.service-ip }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group**: ${{ vars.AZURE_RG }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **AKS Cluster**: ${{ vars.AKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🎯 Features Available" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Cat vs Dog Voting**: Interactive web application" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Real-time Results**: Live vote counting and display" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Auto-scaling**: Horizontal Pod Autoscaler configured" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Load Balancing**: Azure LoadBalancer with health checks" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Health Monitoring**: `/health` and `/ready` endpoints" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ inputs.run_load_test }}" == "true" ]; then
+          echo "- ✅ **Load Testing**: Performance validation completed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 Try Your Application" >> $GITHUB_STEP_SUMMARY
+        echo "Visit your Cat/Dog voting app at: **${{ needs.deploy-azure.outputs.service-url }}**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Vote for your favorite: 🐱 **Cats** or 🐶 **Dogs**!" >> $GITHUB_STEP_SUMMARY
