@@ -32,6 +32,8 @@ spec:
       labels:
         app: voting-app
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: voting-app
         image: ghcr.io/placeholder/cat-dog-voting-app:latest
@@ -44,11 +46,11 @@ spec:
           value: "aks"
         resources:
           requests:
+            memory: "32Mi"
+            cpu: "100m"
+          limits:
             memory: "64Mi"
             cpu: "250m"
-          limits:
-            memory: "128Mi"
-            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
@@ -59,5 +61,5 @@ spec:
           httpGet:
             path: /ready
             port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 15
+          periodSeconds: 10

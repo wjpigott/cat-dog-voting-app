@@ -92,14 +92,27 @@ jobs:
         echo "Using image: $IMAGE_TAG"
         sed -i "s|image: ghcr.io/placeholder/cat-dog-voting-app:latest|image: $IMAGE_TAG|g" k8s/azure/voting-app-deployment.yaml
         
+        # Create image pull secret for GitHub Container Registry
+        kubectl create secret docker-registry ghcr-secret \
+          --docker-server=ghcr.io \
+          --docker-username=${{ github.actor }} \
+          --docker-password=${{ secrets.GITHUB_TOKEN }} \
+          --docker-email=${{ github.actor }}@users.noreply.github.com \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
         # Apply base Kubernetes manifests first (HPA)
         kubectl apply -f k8s/base/
         
         # Apply Azure-specific manifests (will override base deployment)
         kubectl apply -f k8s/azure/
         
-        # Wait for rollout
-        kubectl rollout status deployment/voting-app --timeout=600s
+        # Wait for rollout with extended timeout
+        kubectl rollout status deployment/voting-app --timeout=900s
+        
+        # Check pod status if rollout fails
+        echo "Pod status:"
+        kubectl get pods -l app=voting-app
+        kubectl describe pods -l app=voting-app | tail -20
         
         echo "✅ Deployment completed successfully!"
 
