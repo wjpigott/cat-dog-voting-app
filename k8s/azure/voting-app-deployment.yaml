@@ -20,13 +20,44 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: voting-app
+  labels:
+    app: voting-app
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: voting-app
   template:
+    metadata:
+      labels:
+        app: voting-app
     spec:
       containers:
       - name: voting-app
+        image: ghcr.io/placeholder/cat-dog-voting-app:latest
+        ports:
+        - containerPort: 80
         env:
         - name: ENVIRONMENT
           value: "azure"
         - name: CLUSTER_TYPE
           value: "aks"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
