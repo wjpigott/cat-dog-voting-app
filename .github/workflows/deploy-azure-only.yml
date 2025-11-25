@@ -87,8 +87,10 @@ jobs:
 
     - name: Deploy to Azure AKS
       run: |
-        # Update image in Kubernetes manifests
-        sed -i "s|image: ghcr.io/placeholder/cat-dog-voting-app:latest|image: ${{ needs.build.outputs.image-tag }}|g" k8s/azure/voting-app-deployment.yaml
+        # Update image in Kubernetes manifests - use the first tag (main)
+        IMAGE_TAG=$(echo "${{ needs.build.outputs.image-tag }}" | head -n1)
+        echo "Using image: $IMAGE_TAG"
+        sed -i "s|image: ghcr.io/placeholder/cat-dog-voting-app:latest|image: $IMAGE_TAG|g" k8s/azure/voting-app-deployment.yaml
         
         # Apply Kubernetes manifests
         kubectl apply -f k8s/base/
