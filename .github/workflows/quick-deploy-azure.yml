@@ -1,0 +1,50 @@
+name: Quick Deploy to Azure AKS
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cat-dog-voting-app
+
+jobs:
+  quick-deploy:
+    runs-on: ubuntu-latest
+    environment: azure
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }} --overwrite-existing
+
+    - name: Quick Deploy Voting App
+      env:
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Make script executable
+        chmod +x scripts/quick-deploy-azure.sh
+        
+        # Run quick deployment
+        scripts/quick-deploy-azure.sh
+
+    - name: Show Application Information
+      run: |
+        echo "🎊 Cat/Dog Voting App Deployed!"
+        echo "📍 Application URL: http://$(kubectl get svc voting-app-simple-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+        echo ""
+        echo "🎯 Features:"
+        echo "- Vote for Cats 🐱 or Dogs 🐶"
+        echo "- Real-time voting results"
+        echo "- Deployed on Azure AKS"

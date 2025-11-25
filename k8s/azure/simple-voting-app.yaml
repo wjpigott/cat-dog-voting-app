@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-simple
+  labels:
+    app: voting-app-simple
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-simple
+  template:
+    metadata:
+      labels:
+        app: voting-app-simple
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: voting-app
+        image: ghcr.io/wjpigott/cat-dog-voting-app/cat-dog-voting-app:main
+        ports:
+        - containerPort: 80
+        env:
+        - name: ENVIRONMENT
+          value: "azure"
+        - name: CLUSTER_TYPE
+          value: "aks"
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        # Remove problematic health checks for now
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 80
+        #   initialDelaySeconds: 60
+        #   periodSeconds: 30
+        # readinessProbe:
+        #   httpGet:
+        #     path: /ready
+        #     port: 80
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-simple-lb
+  labels:
+    app: voting-app-simple
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: voting-app-simple
