@@ -37,30 +37,45 @@ metadata:
 data:
   index.html: |
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Cat vs Dog Voting App</title>
         <style>
-            body { font-family: Arial, sans-serif; text-align: center; background: #f0f8ff; padding: 50px; }
-            .container { max-width: 600px; margin: 0 auto; }
-            .vote-button { 
-                font-size: 24px; 
-                padding: 20px 40px; 
-                margin: 20px; 
-                border: none; 
-                border-radius: 10px; 
-                cursor: pointer; 
-                transition: transform 0.2s;
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; 
+                text-align: center; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 50px; 
+                margin: 0;
+                min-height: 100vh;
+                color: white;
             }
-            .vote-button:hover { transform: scale(1.1); }
-            .cat-button { background: #ff9999; color: white; }
-            .dog-button { background: #9999ff; color: white; }
-            .results { margin-top: 40px; font-size: 18px; }
+            .container { max-width: 600px; margin: 0 auto; background: rgba(255,255,255,0.1); padding: 40px; border-radius: 20px; backdrop-filter: blur(10px); }
+            .vote-button { 
+                font-size: 20px; 
+                padding: 15px 30px; 
+                margin: 15px; 
+                border: none; 
+                border-radius: 50px; 
+                cursor: pointer; 
+                transition: all 0.3s ease;
+                font-weight: bold;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                min-width: 200px;
+            }
+            .vote-button:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+            .cat-button { background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; }
+            .dog-button { background: linear-gradient(45deg, #4ecdc4, #44a08d); color: white; }
+            .results { margin-top: 40px; font-size: 18px; background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; }
+            h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            h2 { font-size: 1.2em; margin-bottom: 30px; opacity: 0.9; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🐱 Cat vs Dog Voting App 🐶</h1>
+            <h1>CAT vs DOG Voting App</h1>
             <h2>Successfully Deployed on Azure AKS!</h2>
             
             <button class="vote-button cat-button" onclick="vote('cat')">
@@ -74,7 +89,7 @@ data:
             <div class="results">
                 <p>🎉 Your voting app is now live!</p>
                 <p>Environment: Azure AKS</p>
-                <p>Status: ✅ Working</p>
+                <p>Status: ✅ Working perfectly!</p>
             </div>
         </div>
         
@@ -85,18 +100,56 @@ data:
         function vote(animal) {
             if (animal === 'cat') {
                 catVotes++;
-                alert('Thanks for voting for Cats! 🐱\nCat votes: ' + catVotes);
+                showResults();
+                showNotification('Thanks for voting for Cats! 🐱', '#ff6b6b');
             } else {
                 dogVotes++;
-                alert('Thanks for voting for Dogs! 🐶\nDog votes: ' + dogVotes);
+                showResults();
+                showNotification('Thanks for voting for Dogs! 🐶', '#4ecdc4');
             }
+        }
+        
+        function showResults() {
+            const total = catVotes + dogVotes;
+            const catPercent = total > 0 ? Math.round((catVotes / total) * 100) : 0;
+            const dogPercent = total > 0 ? Math.round((dogVotes / total) * 100) : 0;
             
             document.querySelector('.results').innerHTML = `
-                <p>Current Results:</p>
-                <p>🐱 Cats: ${catVotes} votes</p>
-                <p>🐶 Dogs: ${dogVotes} votes</p>
-                <p>Status: ✅ Working perfectly!</p>
+                <h3>🏆 Live Results</h3>
+                <div style="display: flex; justify-content: space-around; margin: 20px 0;">
+                    <div style="background: rgba(255,107,107,0.3); padding: 15px; border-radius: 10px; flex: 1; margin: 0 10px;">
+                        <div style="font-size: 24px;">🐱</div>
+                        <div style="font-size: 20px; font-weight: bold;">${catVotes}</div>
+                        <div style="font-size: 14px;">${catPercent}%</div>
+                    </div>
+                    <div style="background: rgba(78,205,196,0.3); padding: 15px; border-radius: 10px; flex: 1; margin: 0 10px;">
+                        <div style="font-size: 24px;">🐶</div>
+                        <div style="font-size: 20px; font-weight: bold;">${dogVotes}</div>
+                        <div style="font-size: 14px;">${dogPercent}%</div>
+                    </div>
+                </div>
+                <p style="margin-top: 20px;">Total Votes: ${total}</p>
+                <p>Status: ✅ Working perfectly on Azure AKS!</p>
             `;
+        }
+        
+        function showNotification(message, color) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed; top: 20px; right: 20px; 
+                background: ${color}; color: white; 
+                padding: 15px 20px; border-radius: 10px; 
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                z-index: 1000; font-weight: bold;
+                transform: translateX(400px);
+                transition: transform 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+            setTimeout(() => notification.style.transform = 'translateX(400px)', 2500);
+            setTimeout(() => document.body.removeChild(notification), 3000);
         }
         </script>
     </body>
