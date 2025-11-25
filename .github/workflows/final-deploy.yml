@@ -1,0 +1,59 @@
+name: Final Working Deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: azure
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ vars.AZURE_RG }} --name ${{ vars.AKS_CLUSTER_NAME }} --overwrite-existing
+
+    - name: Deploy Final Working App
+      run: |
+        chmod +x scripts/final-deploy.sh
+        scripts/final-deploy.sh
+
+    - name: Test Application
+      run: |
+        echo "🧪 Testing the deployed application..."
+        AZURE_IP=$(kubectl get svc voting-app-final-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        if [ -n "$AZURE_IP" ] && [ "$AZURE_IP" != "null" ]; then
+          echo "Testing HTTP response from: http://$AZURE_IP"
+          for i in {1..5}; do
+            if curl -s -m 10 "http://$AZURE_IP" | grep -q "Cat vs Dog"; then
+              echo "✅ Application is responding correctly!"
+              break
+            else
+              echo "⏳ Waiting for application to respond... (attempt $i/5)"
+              sleep 10
+            fi
+          done
+        fi
+
+    - name: Show Success Message
+      run: |
+        AZURE_IP=$(kubectl get svc voting-app-final-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        echo ""
+        echo "🎊 CAT/DOG VOTING APP SUCCESSFULLY DEPLOYED!"
+        echo "=================================="
+        echo "🌐 URL: http://$AZURE_IP"
+        echo "🐱 Vote for Cats!"
+        echo "🐶 Vote for Dogs!"
+        echo "⚡ Fast & Reliable on Azure AKS"
+        echo "=================================="

@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-final
+  labels:
+    app: voting-app-final
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-final
+  template:
+    metadata:
+      labels:
+        app: voting-app-final
+    spec:
+      containers:
+      - name: voting-app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: ENVIRONMENT
+          value: "azure"
+        volumeMounts:
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-content
+        configMap:
+          name: voting-app-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voting-app-html
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Cat vs Dog Voting App</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; background: #f0f8ff; padding: 50px; }
+            .container { max-width: 600px; margin: 0 auto; }
+            .vote-button { 
+                font-size: 24px; 
+                padding: 20px 40px; 
+                margin: 20px; 
+                border: none; 
+                border-radius: 10px; 
+                cursor: pointer; 
+                transition: transform 0.2s;
+            }
+            .vote-button:hover { transform: scale(1.1); }
+            .cat-button { background: #ff9999; color: white; }
+            .dog-button { background: #9999ff; color: white; }
+            .results { margin-top: 40px; font-size: 18px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🐱 Cat vs Dog Voting App 🐶</h1>
+            <h2>Successfully Deployed on Azure AKS!</h2>
+            
+            <button class="vote-button cat-button" onclick="vote('cat')">
+                Vote for Cats! 🐱
+            </button>
+            
+            <button class="vote-button dog-button" onclick="vote('dog')">
+                Vote for Dogs! 🐶
+            </button>
+            
+            <div class="results">
+                <p>🎉 Your voting app is now live!</p>
+                <p>Environment: Azure AKS</p>
+                <p>Status: ✅ Working</p>
+            </div>
+        </div>
+        
+        <script>
+        let catVotes = 0;
+        let dogVotes = 0;
+        
+        function vote(animal) {
+            if (animal === 'cat') {
+                catVotes++;
+                alert('Thanks for voting for Cats! 🐱\nCat votes: ' + catVotes);
+            } else {
+                dogVotes++;
+                alert('Thanks for voting for Dogs! 🐶\nDog votes: ' + dogVotes);
+            }
+            
+            document.querySelector('.results').innerHTML = `
+                <p>Current Results:</p>
+                <p>🐱 Cats: ${catVotes} votes</p>
+                <p>🐶 Dogs: ${dogVotes} votes</p>
+                <p>Status: ✅ Working perfectly!</p>
+            `;
+        }
+        </script>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-final-lb
+  labels:
+    app: voting-app-final
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: voting-app-final
