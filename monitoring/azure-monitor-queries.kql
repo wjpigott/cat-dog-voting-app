@@ -1,0 +1,189 @@
+# Cat/Dog Voting App - Comprehensive Monitoring Queries
+# Use these in Azure Monitor Log Analytics for monitoring both clusters
+
+# =============================================================================
+# 📊 CLUSTER HEALTH OVERVIEW
+# =============================================================================
+
+# Cluster node status across both environments
+KubeNodeInventory
+| where TimeGenerated > ago(5m)
+| summarize 
+    NodeCount = dcount(Computer),
+    ReadyNodes = dcountif(Computer, Status == "Ready"),
+    NotReadyNodes = dcountif(Computer, Status != "Ready")
+by ClusterName
+| extend HealthPercentage = (ReadyNodes * 100.0) / NodeCount
+| project ClusterName, NodeCount, ReadyNodes, NotReadyNodes, HealthPercentage
+
+# =============================================================================
+# 🎯 CAT/DOG VOTING APP SPECIFIC MONITORING
+# =============================================================================
+
+# Voting app pod health across both clusters
+KubePodInventory
+| where TimeGenerated > ago(30m)
+| where Name contains "voting"
+| summarize 
+    TotalPods = dcount(Name),
+    RunningPods = dcountif(Name, PodStatus == "Running"),
+    PendingPods = dcountif(Name, PodStatus == "Pending"),
+    FailedPods = dcountif(Name, PodStatus == "Failed"),
+    RestartCount = sum(ContainerRestartCount)
+by Computer, ClusterName
+| extend AppHealth = (RunningPods * 100.0) / TotalPods
+| project ClusterName, Computer, TotalPods, RunningPods, AppHealth, RestartCount
+
+# =============================================================================
+# 🏃‍♂️ PERFORMANCE METRICS COMPARISON
+# =============================================================================
+
+# CPU usage comparison between Azure and On-Premises
+Perf
+| where TimeGenerated > ago(1h)
+| where ObjectName == "K8SContainer"
+| where CounterName == "cpuUsageNanoCores"
+| where InstanceName contains "voting"
+| summarize 
+    AvgCPU = avg(CounterValue),
+    MaxCPU = max(CounterValue),
+    MinCPU = min(CounterValue)
+by Computer, ClusterName, bin(TimeGenerated, 5m)
+| project TimeGenerated, ClusterName, Computer, AvgCPU, MaxCPU, MinCPU
+
+# Memory usage comparison
+Perf
+| where TimeGenerated > ago(1h)
+| where ObjectName == "K8SContainer"
+| where CounterName == "memoryRssBytes"
+| where InstanceName contains "voting"
+| summarize 
+    AvgMemory = avg(CounterValue) / 1024 / 1024,  // Convert to MB
+    MaxMemory = max(CounterValue) / 1024 / 1024,
+    MinMemory = min(CounterValue) / 1024 / 1024
+by Computer, ClusterName, bin(TimeGenerated, 5m)
+| project TimeGenerated, ClusterName, Computer, AvgMemory, MaxMemory, MinMemory
+
+# =============================================================================
+# 📊 APPLICATION LOGS AND ERRORS
+# =============================================================================
+
+# Application errors and logs
+ContainerLog
+| where TimeGenerated > ago(1h)
+| where Name contains "voting"
+| where LogEntry contains "error" or LogEntry contains "Error" or LogEntry contains "ERROR"
+| summarize ErrorCount = count() by Computer, ClusterName, bin(TimeGenerated, 5m)
+| project TimeGenerated, ClusterName, Computer, ErrorCount
+
+# Recent application logs
+ContainerLog
+| where TimeGenerated > ago(30m)
+| where Name contains "voting"
+| project TimeGenerated, Computer, ClusterName, LogEntry, LogEntrySource
+| order by TimeGenerated desc
+| take 100
+
+# =============================================================================
+# 🌐 NETWORK AND SERVICE HEALTH
+# =============================================================================
+
+# Service endpoint health check
+let HealthCheck = () {
+    // Simulated health check - replace with actual HTTP probe results
+    datatable(ClusterName: string, Endpoint: string, Status: string, ResponseTime: double)
+    [
+        "Azure-AKS", "http://52.154.54.110", "Healthy", 180.5,
+        "OnPrem-Arc", "http://66.242.207.21:31514", "Healthy", 29.8
+    ]
+};
+HealthCheck()
+| extend HealthStatus = iff(ResponseTime < 1000, "Good", iff(ResponseTime < 2000, "Fair", "Poor"))
+| project ClusterName, Endpoint, Status, ResponseTime, HealthStatus
+
+# =============================================================================
+# 🚨 ALERTS AND INCIDENTS
+# =============================================================================
+
+# Pod restart events (indicates potential issues)
+KubeEvents
+| where TimeGenerated > ago(1h)
+| where ObjectKind == "Pod"
+| where Name contains "voting"
+| where Reason == "Started" or Reason == "Killing"
+| summarize RestartEvents = count() by Computer, ClusterName, Name, bin(TimeGenerated, 5m)
+| where RestartEvents > 1
+| project TimeGenerated, ClusterName, Computer, Name, RestartEvents
+
+# Resource quota and limits
+KubePodInventory
+| where TimeGenerated > ago(5m)
+| where Name contains "voting"
+| project 
+    ClusterName,
+    Computer,
+    Name,
+    PodStatus,
+    ContainerRestartCount,
+    PodCreationTimeStamp
+| join kind=inner (
+    Perf
+    | where ObjectName == "K8SContainer"
+    | where CounterName == "cpuLimitNanoCores"
+    | where InstanceName contains "voting"
+    | summarize CpuLimit = avg(CounterValue) by Computer
+) on Computer
+
+# =============================================================================
+# 📈 CAPACITY PLANNING
+# =============================================================================
+
+# Resource utilization trends
+Perf
+| where TimeGenerated > ago(24h)
+| where ObjectName == "K8SContainer"
+| where InstanceName contains "voting"
+| where CounterName in ("cpuUsageNanoCores", "memoryRssBytes")
+| summarize 
+    AvgValue = avg(CounterValue),
+    MaxValue = max(CounterValue)
+by Computer, ClusterName, CounterName, bin(TimeGenerated, 1h)
+| project TimeGenerated, ClusterName, Computer, CounterName, AvgValue, MaxValue
+
+# =============================================================================
+# 🔄 LOAD TESTING RESULTS MONITORING
+# =============================================================================
+
+# HTTP request patterns (if available from ingress logs)
+ContainerLog
+| where TimeGenerated > ago(1h)
+| where Name contains "voting" or Name contains "nginx"
+| where LogEntry matches regex @"GET|POST"
+| extend RequestMethod = extract(@"(GET|POST)", 1, LogEntry)
+| extend StatusCode = extract(@"\s(\d{3})\s", 1, LogEntry)
+| where isnotempty(StatusCode)
+| summarize 
+    RequestCount = count(),
+    SuccessCount = countif(StatusCode startswith "2"),
+    ErrorCount = countif(StatusCode startswith "4" or StatusCode startswith "5")
+by Computer, ClusterName, bin(TimeGenerated, 5m)
+| extend SuccessRate = (SuccessCount * 100.0) / RequestCount
+| project TimeGenerated, ClusterName, Computer, RequestCount, SuccessRate, ErrorCount
+
+# =============================================================================
+# 🏆 CUSTOM VOTING APP METRICS
+# =============================================================================
+
+# Cat vs Dog vote distribution (if logged)
+ContainerLog
+| where TimeGenerated > ago(1h)
+| where Name contains "voting"
+| where LogEntry contains "vote" or LogEntry contains "cat" or LogEntry contains "dog"
+| extend VoteType = case(
+    LogEntry contains "cat", "Cat",
+    LogEntry contains "dog", "Dog",
+    "Unknown"
+)
+| where VoteType != "Unknown"
+| summarize VoteCount = count() by Computer, ClusterName, VoteType, bin(TimeGenerated, 5m)
+| project TimeGenerated, ClusterName, Computer, VoteType, VoteCount

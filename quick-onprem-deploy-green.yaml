@@ -1,0 +1,205 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-onprem
+  labels:
+    app: voting-app-onprem
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-onprem
+  template:
+    metadata:
+      labels:
+        app: voting-app-onprem
+    spec:
+      containers:
+      - name: voting-app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: ENVIRONMENT
+          value: "on-premises"
+        - name: CLUSTER_TYPE
+          value: "azure-arc"
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-content
+        configMap:
+          name: voting-app-html-onprem
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voting-app-html-onprem
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cat vs Dog Voting App - On-Premises</title>
+        <style>
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; 
+                text-align: center; 
+                background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%); 
+                padding: 50px; 
+                margin: 0;
+                min-height: 100vh;
+                color: white;
+            }
+            .container { 
+                max-width: 600px; 
+                margin: 0 auto; 
+                background: rgba(255,255,255,0.1); 
+                padding: 40px; 
+                border-radius: 20px; 
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+            .vote-button { 
+                font-size: 20px; 
+                padding: 15px 30px; 
+                margin: 15px; 
+                border: none; 
+                border-radius: 50px; 
+                cursor: pointer; 
+                transition: all 0.3s ease;
+                font-weight: bold;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                min-width: 200px;
+            }
+            .vote-button:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+            .cat-button { background: linear-gradient(45deg, #e74c3c, #c0392b); color: white; }
+            .dog-button { background: linear-gradient(45deg, #3498db, #2980b9); color: white; }
+            .results { margin-top: 40px; font-size: 18px; background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; }
+            h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            h2 { font-size: 1.2em; margin-bottom: 30px; opacity: 0.9; }
+            .badge { 
+                display: inline-block; 
+                background: rgba(52, 152, 219, 0.8); 
+                padding: 5px 15px; 
+                border-radius: 20px; 
+                font-size: 14px; 
+                margin: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>CAT vs DOG Voting App</h1>
+            <h2>🌿 UPDATED: Running on On-Premises Azure Arc!</h2>
+            
+            <div>
+                <span class="badge">🏗️ On-Premises Deployment</span>
+                <span class="badge">☁️ Azure Arc Enabled</span>
+                <span class="badge">⚡ Edge Computing</span>
+            </div>
+            
+            <button class="vote-button cat-button" onclick="vote('cat')">
+                Vote for Cats! 🐱
+            </button>
+            
+            <button class="vote-button dog-button" onclick="vote('dog')">
+                Vote for Dogs! 🐶
+            </button>
+            
+            <div class="results">
+                <p>🎉 Your on-premises voting app is now live!</p>
+                <p>Environment: On-Premises Azure Arc Kubernetes</p>
+                <p>Status: ✅ Working perfectly!</p>
+                <p>🔧 Much better than linux-sample.yaml!</p>
+            </div>
+        </div>
+        
+        <script>
+        let catVotes = 0;
+        let dogVotes = 0;
+        
+        function vote(animal) {
+            if (animal === 'cat') {
+                catVotes++;
+                showResults();
+                showNotification('Thanks for voting for Cats! 🐱', '#e74c3c');
+            } else {
+                dogVotes++;
+                showResults();
+                showNotification('Thanks for voting for Dogs! 🐶', '#3498db');
+            }
+        }
+        
+        function showResults() {
+            const total = catVotes + dogVotes;
+            const catPercent = total > 0 ? Math.round((catVotes / total) * 100) : 0;
+            const dogPercent = total > 0 ? Math.round((dogVotes / total) * 100) : 0;
+            
+            document.querySelector('.results').innerHTML = `
+                <h3>🏆 Live Results</h3>
+                <div style="display: flex; justify-content: space-around; margin: 20px 0;">
+                    <div style="background: rgba(231,76,60,0.3); padding: 15px; border-radius: 10px; flex: 1; margin: 0 10px;">
+                        <div style="font-size: 24px;">🐱</div>
+                        <div style="font-size: 20px; font-weight: bold;">${catVotes}</div>
+                        <div style="font-size: 14px;">${catPercent}%</div>
+                    </div>
+                    <div style="background: rgba(52,152,219,0.3); padding: 15px; border-radius: 10px; flex: 1; margin: 0 10px;">
+                        <div style="font-size: 24px;">🐶</div>
+                        <div style="font-size: 20px; font-weight: bold;">${dogVotes}</div>
+                        <div style="font-size: 14px;">${dogPercent}%</div>
+                    </div>
+                </div>
+                <p style="margin-top: 20px;">Total Votes: ${total}</p>
+                <p>🏠 Environment: On-Premises Azure Arc Kubernetes</p>
+                <p>Status: ✅ Working perfectly on your edge infrastructure!</p>
+                <p>🚀 Deployed locally instead of basic linux-sample!</p>
+            `;
+        }
+        
+        function showNotification(message, color) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed; top: 20px; right: 20px; 
+                background: ${color}; color: white; 
+                padding: 15px 20px; border-radius: 10px; 
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                z-index: 1000; font-weight: bold;
+                transform: translateX(400px);
+                transition: transform 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+            setTimeout(() => notification.style.transform = 'translateX(400px)', 2500);
+            setTimeout(() => document.body.removeChild(notification), 3000);
+        }
+        </script>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-onprem-service
+  labels:
+    app: voting-app-onprem
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: voting-app-onprem
