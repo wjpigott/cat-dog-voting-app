@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-onprem-fixed
+  labels:
+    app: voting-app-onprem
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-onprem
+  template:
+    metadata:
+      labels:
+        app: voting-app-onprem
+    spec:
+      containers:
+      - name: voting-app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-content
+        configMap:
+          name: voting-app-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voting-app-html
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cat vs Dog Voting</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            h1 { font-size: 2.5em; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            .voting-section { display: flex; justify-content: space-around; margin: 40px 0; }
+            .vote-option { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 30px; cursor: pointer; transition: transform 0.3s; backdrop-filter: blur(10px); }
+            .vote-option:hover { transform: scale(1.05); background: rgba(255,255,255,0.2); }
+            .emoji { font-size: 4em; margin-bottom: 15px; }
+            .vote-count { font-size: 1.5em; margin-top: 15px; font-weight: bold; }
+            .total-votes { margin-top: 40px; font-size: 1.3em; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; }
+            .environment-info { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; font-size: 0.9em; }
+        </style>
+    </head>
+    <body>
+        <div class="environment-info">On-Premises Environment</div>
+        <div class="container">
+            <h1>🐱 vs 🐶 Voting App</h1>
+            <p>Vote for your favorite pet!</p>
+            
+            <div class="voting-section">
+                <div class="vote-option" onclick="vote('cat')">
+                    <div class="emoji">🐱</div>
+                    <h2>Team Cat</h2>
+                    <div class="vote-count" id="cat-votes">0 votes</div>
+                </div>
+                
+                <div class="vote-option" onclick="vote('dog')">
+                    <div class="emoji">🐶</div>
+                    <h2>Team Dog</h2>
+                    <div class="vote-count" id="dog-votes">0 votes</div>
+                </div>
+            </div>
+            
+            <div class="total-votes">
+                Total Votes: <span id="total-votes">0</span>
+            </div>
+        </div>
+
+        <script>
+            let catVotes = parseInt(localStorage.getItem('catVotes')) || 0;
+            let dogVotes = parseInt(localStorage.getItem('dogVotes')) || 0;
+            
+            function updateDisplay() {
+                document.getElementById('cat-votes').textContent = catVotes + ' votes';
+                document.getElementById('dog-votes').textContent = dogVotes + ' votes';
+                document.getElementById('total-votes').textContent = catVotes + dogVotes;
+            }
+            
+            function vote(animal) {
+                if (animal === 'cat') {
+                    catVotes++;
+                    localStorage.setItem('catVotes', catVotes);
+                } else if (animal === 'dog') {
+                    dogVotes++;
+                    localStorage.setItem('dogVotes', dogVotes);
+                }
+                updateDisplay();
+            }
+            
+            // Initialize display
+            updateDisplay();
+        </script>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-service-onprem-fixed
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 31515
+  selector:
+    app: voting-app-onprem

@@ -1,0 +1,209 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+type: Opaque
+stringData:
+  POSTGRES_USER: votinguser
+  POSTGRES_PASSWORD: secure_password_123
+  POSTGRES_DB: voting_app
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  DB_HOST: "postgres-service"
+  DB_NAME: "voting_app"
+  DB_USER: "votinguser"
+  DB_PORT: "5432"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure
+  labels:
+    app: voting-app-azure
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: voting-app-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure
+    spec:
+      initContainers:
+      - name: wait-for-db
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432; do echo waiting for database; sleep 2; done;']
+      containers:
+      - name: voting-app
+        image: voting-app:enhanced  # You'll need to build this image
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APP_SOURCE
+          value: "azure"
+        - name: APP_PORT
+          value: "5000"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5000
+  selector:
+    app: voting-app-azure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-onprem
+  labels:
+    app: voting-app-onprem
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-onprem
+  template:
+    metadata:
+      labels:
+        app: voting-app-onprem
+    spec:
+      initContainers:
+      - name: wait-for-db
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432; do echo waiting for database; sleep 2; done;']
+      containers:
+      - name: voting-app
+        image: voting-app:enhanced  # Same image, different config
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APP_SOURCE
+          value: "onprem"
+        - name: APP_PORT
+          value: "5000"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-onprem-service
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 5000
+    nodePort: 31515
+  selector:
+    app: voting-app-onprem
