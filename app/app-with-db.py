@@ -167,6 +167,11 @@ def health():
             'database': 'disconnected'
         }), 500
 
+@app.route('/results')
+def results():
+    # Web interface endpoint - same as api_results but without /api prefix
+    return api_results()
+
 @app.route('/api/results')
 def api_results():
     conn = get_db_connection()
