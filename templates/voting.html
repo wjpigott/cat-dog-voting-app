@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat vs Dog Voting - Enhanced with Database</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .environment-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .azure { background: linear-gradient(45deg, #0078d4, #106ebe); }
+        .onprem { background: linear-gradient(45deg, #2d5a27, #4caf50); }
+        
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.3);
+        }
+        
+        .voting-section {
+            display: flex;
+            justify-content: space-around;
+            margin: 40px 0;
+            gap: 30px;
+        }
+        
+        .vote-option {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 2px solid transparent;
+        }
+        
+        .vote-option:hover {
+            transform: scale(1.05);
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .vote-option.voted {
+            background: rgba(255,255,255,0.3);
+            border-color: #fff;
+        }
+        
+        .emoji {
+            font-size: 5em;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        .results-section {
+            margin-top: 40px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .result-bar {
+            background: rgba(255,255,255,0.1);
+            height: 40px;
+            border-radius: 20px;
+            margin: 15px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .result-fill {
+            height: 100%;
+            border-radius: 20px;
+            transition: width 1s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-weight: bold;
+        }
+        
+        .cat-fill { background: linear-gradient(90deg, #ff6b6b, #ee5a24); }
+        .dog-fill { background: linear-gradient(90deg, #4ecdc4, #00b894); }
+        
+        .source-breakdown {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+            gap: 20px;
+        }
+        
+        .source-stats {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .azure-stats { border-left: 4px solid #0078d4; }
+        .onprem-stats { border-left: 4px solid #4caf50; }
+        
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        .status-indicator {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .status-online { background: rgba(76, 175, 80, 0.9); }
+        .status-offline { background: rgba(244, 67, 54, 0.9); }
+        
+        .analytics-link {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            text-decoration: none;
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .analytics-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="environment-badge {{ app_source }}">
+        {% if app_source == 'azure' %}
+            ☁️ Azure AKS
+        {% else %}
+            🏢 On-Premises
+        {% endif %}
+    </div>
+
+    <div class="container">
+        <h1>🐱 vs 🐶 Enhanced Voting</h1>
+        <p><strong>Persistent Database Backend</strong> | Real-time Cross-Environment Results</p>
+        
+        <div class="voting-section">
+            <div class="vote-option" id="cat-option" onclick="castVote('cat')">
+                <span class="emoji">🐱</span>
+                <h2>Team Cat</h2>
+                <p>Vote for our feline friends!</p>
+            </div>
+            
+            <div class="vote-option" id="dog-option" onclick="castVote('dog')">
+                <span class="emoji">🐶</span>
+                <h2>Team Dog</h2>
+                <p>Vote for our canine companions!</p>
+            </div>
+        </div>
+        
+        <div class="results-section">
+            <h3>🏆 Live Results from Database</h3>
+            <div id="results-content">
+                <div class="result-bar">
+                    <div class="result-fill cat-fill" id="cat-bar" style="width: 0%">
+                        🐱 Cats: <span id="cat-count">0</span> votes
+                    </div>
+                </div>
+                
+                <div class="result-bar">
+                    <div class="result-fill dog-fill" id="dog-bar" style="width: 0%">
+                        🐶 Dogs: <span id="dog-count">0</span> votes
+                    </div>
+                </div>
+            </div>
+            
+            <div class="source-breakdown">
+                <div class="source-stats azure-stats">
+                    <h4>☁️ Azure Votes</h4>
+                    <p>Cats: <span id="azure-cat">0</span></p>
+                    <p>Dogs: <span id="azure-dog">0</span></p>
+                    <p><strong>Total: <span id="azure-total">0</span></strong></p>
+                </div>
+                
+                <div class="source-stats onprem-stats">
+                    <h4>🏢 On-Premises Votes</h4>
+                    <p>Cats: <span id="onprem-cat">0</span></p>
+                    <p>Dogs: <span id="onprem-dog">0</span></p>
+                    <p><strong>Total: <span id="onprem-total">0</span></strong></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-indicator status-online" id="status-indicator">
+        🟢 Database Connected
+    </div>
+
+    <a href="/analytics" class="analytics-link">📊 Analytics</a>
+
+    <script>
+        let votingEnabled = true;
+        const appSource = '{{ app_source }}';
+        
+        async function castVote(choice) {
+            if (!votingEnabled) return;
+            
+            votingEnabled = false;
+            document.body.classList.add('loading');
+            
+            try {
+                const response = await fetch('/vote', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ choice: choice })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Visual feedback
+                    const option = document.getElementById(choice + '-option');
+                    option.classList.add('voted');
+                    setTimeout(() => option.classList.remove('voted'), 1000);
+                    
+                    // Update results immediately
+                    await updateResults();
+                    
+                    console.log(`Vote cast: ${choice} from ${result.source}`);
+                } else {
+                    alert('Failed to cast vote: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error casting vote:', error);
+                alert('Failed to cast vote. Please try again.');
+            } finally {
+                votingEnabled = true;
+                document.body.classList.remove('loading');
+            }
+        }
+        
+        async function updateResults() {
+            try {
+                const response = await fetch('/results');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update main results
+                let catTotal = 0, dogTotal = 0;
+                let azureCat = 0, azureDog = 0, onpremCat = 0, onpremDog = 0;
+                
+                // Process summary data
+                data.summary.forEach(row => {
+                    if (row.vote_choice === 'cat') {
+                        catTotal = row.total_votes;
+                        azureCat = row.azure_votes || 0;
+                        onpremCat = row.onprem_votes || 0;
+                    } else if (row.vote_choice === 'dog') {
+                        dogTotal = row.total_votes;
+                        azureDog = row.azure_votes || 0;
+                        onpremDog = row.onprem_votes || 0;
+                    }
+                });
+                
+                const totalVotes = catTotal + dogTotal;
+                const catPercentage = totalVotes > 0 ? (catTotal / totalVotes * 100) : 0;
+                const dogPercentage = totalVotes > 0 ? (dogTotal / totalVotes * 100) : 0;
+                
+                // Update UI
+                document.getElementById('cat-count').textContent = catTotal;
+                document.getElementById('dog-count').textContent = dogTotal;
+                document.getElementById('cat-bar').style.width = catPercentage + '%';
+                document.getElementById('dog-bar').style.width = dogPercentage + '%';
+                
+                // Update source breakdown
+                document.getElementById('azure-cat').textContent = azureCat;
+                document.getElementById('azure-dog').textContent = azureDog;
+                document.getElementById('azure-total').textContent = azureCat + azureDog;
+                
+                document.getElementById('onprem-cat').textContent = onpremCat;
+                document.getElementById('onprem-dog').textContent = onpremDog;
+                document.getElementById('onprem-total').textContent = onpremCat + onpremDog;
+                
+                // Update status
+                const statusIndicator = document.getElementById('status-indicator');
+                statusIndicator.className = 'status-indicator status-online';
+                statusIndicator.innerHTML = '🟢 Database Connected';
+                
+            } catch (error) {
+                console.error('Error updating results:', error);
+                const statusIndicator = document.getElementById('status-indicator');
+                statusIndicator.className = 'status-indicator status-offline';
+                statusIndicator.innerHTML = '🔴 Database Error';
+            }
+        }
+        
+        // Auto-refresh results every 5 seconds
+        setInterval(updateResults, 5000);
+        
+        // Initial load
+        updateResults();
+        
+        console.log(`Voting app loaded - Source: ${appSource}`);
+    </script>
+</body>
+</html>
