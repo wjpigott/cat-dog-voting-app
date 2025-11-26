@@ -1,0 +1,8 @@
+{
+  "FQDN": "catdog-lb-simple.centralus.cloudapp.azure.com",
+  "AzureBackend": "52.154.54.110",
+  "OnPremBackend": "66.242.207.21:31514",
+  "AppGatewayName": "appgw-catdog-voting-simple",
+  "PublicIP": "172.202.17.171",
+  "ResourceGroup": "rg-cat-dog-voting-demo"
+}

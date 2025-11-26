@@ -56,7 +56,8 @@ az network application-gateway create `
     --http-settings-cookie-based-affinity Disabled `
     --frontend-port 80 `
     --http-settings-port 80 `
-    --http-settings-protocol Http
+    --http-settings-protocol Http `
+    --priority 100
 
 # Add Azure AKS Backend Pool
 Write-Host "☁️ Adding Azure AKS Backend Pool..." -ForegroundColor Green
