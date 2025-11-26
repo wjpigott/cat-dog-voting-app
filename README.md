@@ -1,102 +1,394 @@
-# 🐱🐶 Cat vs Dog Voting App - Multi-Cloud Deployment
+# 🐱🐶 Cat vs Dog Voting App - Hybrid Cloud DevOps Pipeline
 
-A Kubernetes-based voting application demonstrating hybrid cloud deployment with Azure Arc on-premises and Azure Kubernetes Service (AKS), featuring automated DevOps pipelines, load balancing, failover, and load testing.
+A complete hybrid cloud demonstration featuring a PostgreSQL-backed voting application deployed across Azure AKS and on-premises Azure Arc-enabled Kubernetes. This project showcases enterprise DevOps practices including database integration, cross-environment analytics, and automated CI/CD pipelines.
 
 ## 🏗️ Architecture
 
-- **On-Premises**: Azure Arc-enabled Kubernetes cluster using AKS Edge Essentials
-- **Cloud**: Azure Kubernetes Service (AKS)
-- **Load Balancing**: Azure Traffic Manager with priority-based routing
-- **Failover**: Automatic failover from on-premises to Azure
-- **CI/CD**: GitHub Actions with multi-environment deployment
-- **Load Testing**: Artillery.js for performance validation
+- **On-Premises**: Azure Arc-enabled Kubernetes cluster (K3s on Ubuntu)
+- **Cloud**: Azure Kubernetes Service (AKS) 
+- **Database**: PostgreSQL with cross-environment vote tracking
+- **Load Balancing**: Azure Application Gateway with custom port support
+- **Failover**: Database-backed resilience with persistent storage
+- **CI/CD**: GitHub Actions with GitOps deployment
+- **Analytics**: Real-time vote tracking with source attribution (Azure vs On-premises)
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Prerequisites
+### Step 1: Set Up Ubuntu Machine (On-Premises Foundation)
 
-1. **Azure Arc Kubernetes Cluster** (On-Premises)
-   ```powershell
-   $url = "https://raw.githubusercontent.com/Azure/AKS-Edge/main/tools/scripts/AksEdgeQuickStart/AksEdgeQuickStart.ps1"
-   Invoke-WebRequest -Uri $url -OutFile .\AksEdgeQuickStart.ps1
-   Unblock-File .\AksEdgeQuickStart.ps1
-   ```
+**Start with a standard Ubuntu 22.04 LTS machine** on your local network:
 
-2. **Azure AKS Cluster**
-   ```bash
-   az aks create --resource-group rg-cat-dog-voting --name aks-cat-dog-voting --node-count 3
-   ```
-
-3. **GitHub Repository Secrets**
-   - `AZURE_CREDENTIALS`: Azure service principal
-   - `AZURE_CLIENT_SECRET`: Service principal secret
-
-4. **GitHub Repository Variables**
-   - `AZURE_RG`: Azure resource group name
-   - `AKS_CLUSTER_NAME`: AKS cluster name
-   - `AZURE_CLIENT_ID`: Service principal client ID
-   - `AZURE_TENANT_ID`: Azure tenant ID
-
-### Deployment Options
-
-#### 1. Deploy to Both Environments (Recommended)
+#### Option A: Physical/VM Ubuntu Machine
 ```bash
-# Trigger via GitHub Actions
-gh workflow run deploy-multi-env.yml
+# On a fresh Ubuntu 22.04 LTS system
+sudo apt update && sudo apt upgrade -y
+
+# Install required tools
+sudo apt install -y curl wget git
+
+# Install Docker
+sudo apt install docker.io -y
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Install K3s (lightweight Kubernetes)
+curl -sfL https://get.k3s.io | sh -
+sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+
+# Verify Kubernetes is running
+sudo k3s kubectl get nodes
 ```
 
-#### 2. Deploy to Single Environment
+#### Option B: Azure VM as "On-Premises"
 ```bash
-# On-premises only
-gh workflow run deploy-single-env.yml -f environment=onprem
+# Create Ubuntu VM in Azure (simulating on-premises)
+az vm create \
+  --resource-group rg-cat-dog-voting-demo \
+  --name vm-onprem-k8s \
+  --image Ubuntu2204 \
+  --size Standard_D2s_v3 \
+  --admin-username azureuser \
+  --generate-ssh-keys \
+  --public-ip-sku Standard
 
-# Azure only  
-gh workflow run deploy-single-env.yml -f environment=azure
+# SSH into the VM and follow Option A steps above
 ```
 
-#### 3. Manual Deployment (PowerShell)
-```powershell
-# Deploy to both environments
-.\scripts\Deploy-VotingApp.ps1 -Environment both
+### Step 2: Enable Azure Arc on Your Kubernetes Cluster
 
-# Deploy to specific environment
-.\scripts\Deploy-VotingApp.ps1 -Environment onprem
-.\scripts\Deploy-VotingApp.ps1 -Environment azure
-```
-
-## 📊 Load Testing
-
-The pipeline automatically runs load tests after deployment using Artillery.js:
+**Connect your on-premises Kubernetes cluster to Azure**:
 
 ```bash
-# Manual load testing
+# Install Azure CLI
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# Login to Azure
+az login
+
+# Install Arc extensions
+az extension add --name connectedk8s
+az extension add --name k8s-extension
+
+# Connect cluster to Azure Arc
+az connectedk8s connect \
+  --resource-group rg-cat-dog-voting-demo \
+  --name arc-k8s-onprem \
+  --location eastus
+
+# Verify Arc connection
+az connectedk8s list --resource-group rg-cat-dog-voting-demo
+kubectl get pods -n azure-arc
+```
+
+### Step 3: Deploy the Cat/Dog Voting Application
+
+**Deploy the database-enhanced voting application**:
+
+```bash
+# Clone this repository
+git clone https://github.com/wjpigott/cat-dog-voting-app.git
+cd cat-dog-voting-app
+
+# Deploy PostgreSQL database
+kubectl apply -f https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/postgres-only-deploy.yaml
+
+# Wait for database to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/postgres-deployment
+
+# Download and deploy enhanced voting application
+wget -O app/app-with-db.py https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/app/app-with-db.py
+wget https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/Dockerfile-enhanced
+wget https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/requirements-enhanced.txt
+
+# Create templates directory
+mkdir -p templates
+wget -O templates/voting.html https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/templates/voting.html
+
+# Build and deploy
+docker build -f Dockerfile-enhanced -t voting-app-db:latest .
+docker save voting-app-db:latest -o voting-app-db.tar
+sudo k3s ctr images import voting-app-db.tar
+rm voting-app-db.tar
+
+# Deploy voting application
+kubectl create deployment voting-app-onprem --image=voting-app-db:latest
+kubectl patch deployment voting-app-onprem -p '{"spec":{"template":{"spec":{"containers":[{"name":"voting-app-db","imagePullPolicy":"Never"}]}}}}'
+
+# Configure database connection
+kubectl set env deployment/voting-app-onprem \
+    VOTE_SOURCE=onprem \
+    DB_HOST=postgres-service \
+    DB_PORT=5432 \
+    DB_NAME=voting_app \
+    DB_USER=votinguser \
+    DB_PASSWORD=secure_password_123
+
+# Expose the service
+kubectl expose deployment voting-app-onprem --port=80 --target-port=5000 --type=LoadBalancer --name=voting-app-onprem-service
+kubectl patch service voting-app-onprem-service --type='json' -p='[{"op":"replace","path":"/spec/ports/0/nodePort","value":31514}]'
+
+# Get your external IP and test
+kubectl get svc voting-app-onprem-service
+curl http://YOUR-IP:31514/health
+```
+
+### Step 4: Set Up Azure AKS (Cloud Environment)
+
+**Create Azure Kubernetes cluster for cloud deployment**:
+
+```bash
+# Create AKS cluster
+az aks create \
+  --resource-group rg-cat-dog-voting-demo \
+  --name aks-cat-dog-voting \
+  --node-count 3 \
+  --enable-managed-identity \
+  --generate-ssh-keys
+
+# Get AKS credentials
+az aks get-credentials --resource-group rg-cat-dog-voting-demo --name aks-cat-dog-voting
+
+# Deploy voting app that connects to on-premises database
+kubectl apply -f https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/azure-voting-app-shared-db.yaml
+
+# Get Azure service external IP
+kubectl get svc voting-app-azure-service -w
+```
+
+## 🎯 What You'll Have
+
+✅ **Hybrid Cloud Architecture**: On-premises + Azure cloud  
+✅ **Azure Arc Management**: On-premises cluster managed via Azure  
+✅ **Shared Database**: PostgreSQL with cross-environment vote tracking  
+✅ **Real-time Analytics**: See which votes came from Azure vs On-premises  
+✅ **Enterprise DevOps**: GitOps deployment from GitHub  
+✅ **Load Balancing**: Traffic distribution between environments  
+✅ **Persistent Storage**: Votes survive application restarts  
+
+## 🌟 Key Features
+
+- **Cross-Environment Vote Tracking**: See Azure vs On-premises vote sources
+- **Database-Backed Persistence**: PostgreSQL with vote history
+- **Real-time Web Interface**: Live updates every 5 seconds  
+- **REST API**: `/api/results` for programmatic access
+- **Health Monitoring**: Built-in health checks and status indicators
+- **Visual Analytics**: Environment-specific vote breakdowns
+
+## 💡 Why This Approach?
+
+1. **Realistic Setup**: Starts with standard Ubuntu (like real enterprises)
+2. **Progressive Enhancement**: Build → Arc-enable → Deploy application
+3. **Hands-on Learning**: Experience real Azure Arc onboarding process
+4. **Enterprise Relevance**: Mirrors how organizations adopt hybrid cloud
+5. **Complete Pipeline**: From infrastructure to application deployment
+
+## 📊 Testing Your Deployment
+
+### Verify Both Environments
+```bash
+# Test on-premises deployment
+curl http://YOUR-ONPREM-IP:31514/health
+curl http://YOUR-ONPREM-IP:31514/api/results
+
+# Test Azure deployment  
+curl http://YOUR-AZURE-IP/health
+curl http://YOUR-AZURE-IP/api/results
+```
+
+### Cast Some Votes
+Visit both environments in your browser:
+- **On-Premises**: `http://YOUR-ONPREM-IP:31514`
+- **Azure Cloud**: `http://YOUR-AZURE-IP`
+
+Vote for cats and dogs from both environments and watch the analytics!
+
+### Verify Cross-Environment Analytics
+```bash
+# Check the database shows votes from both sources
+kubectl exec -it deployment/postgres-deployment -- psql -U votinguser -d voting_app -c "SELECT vote_option, source, COUNT(*) FROM votes GROUP BY vote_option, source ORDER BY vote_option, source;"
+```
+
+You should see results like:
+```
+ vote_option | source  | count 
+-------------+---------+-------
+ cat         | azure   |     3
+ cat         | onprem  |     2
+ dog         | azure   |     1
+ dog         | onprem  |     4
+```
+
+## 🔄 Advanced Operations
+
+### Load Testing
+```bash
+# Install Artillery.js
 npm install -g artillery@latest
-artillery run load-tests/voting-app-load-test.yml --target http://your-app-url
+
+# Run load tests
+artillery run load-tests/voting-app-load-test.yml --target http://YOUR-ONPREM-IP:31514
 ```
 
-Load test includes:
-- **Warm-up phase**: 60s at 5 requests/second
-- **Ramp-up phase**: 120s at 10 requests/second  
-- **Sustained load**: 300s at 15 requests/second
-- **Peak load**: 60s at 20 requests/second
+### Failover Testing
+```bash
+# Scale down on-premises to simulate failure
+kubectl scale deployment voting-app-onprem --replicas=0
 
-## 🔄 Failover Testing
+# Votes now only go to Azure environment
+# Check database to see only "azure" source votes
 
-Test the failover mechanism:
+# Restore on-premises
+kubectl scale deployment voting-app-onprem --replicas=1
+```
 
-1. **Simulate On-Premises Failure**:
-   ```bash
-   kubectl scale deployment voting-app --replicas=0 --context=arc-cluster
-   ```
+### Monitoring and Observability
+```bash
+# Check application logs
+kubectl logs deployment/voting-app-onprem -f
 
-2. **Verify Azure Takes Over**:
-   - Traffic Manager automatically routes to Azure endpoint
-   - Monitor via Azure Portal or direct Azure endpoint
+# Monitor database connections
+kubectl exec -it deployment/postgres-deployment -- psql -U votinguser -d voting_app -c "SELECT state, count(*) FROM pg_stat_activity GROUP BY state;"
+```
 
-3. **Restore On-Premises**:
-   ```bash
-   kubectl scale deployment voting-app --replicas=3 --context=arc-cluster
-   ```
+## 🛠️ Development Workflow
+
+### Local Development
+```bash
+# Run locally with Docker Compose
+docker-compose up -d postgres
+docker build -f Dockerfile-enhanced -t voting-app-local .
+docker run -e DB_HOST=localhost -p 5000:5000 voting-app-local
+```
+
+### Making Changes
+```bash
+# Update the application
+# Edit app/app-with-db.py or templates/voting.html
+
+# Rebuild and redeploy
+docker build -f Dockerfile-enhanced -t voting-app-db:latest .
+docker save voting-app-db:latest -o voting-app-db.tar
+sudo k3s ctr images import voting-app-db.tar
+kubectl rollout restart deployment/voting-app-onprem
+```
+
+## 🗃️ Database Schema
+
+The PostgreSQL database includes:
+
+```sql
+-- Votes table with source attribution
+CREATE TABLE votes (
+    id SERIAL PRIMARY KEY,
+    vote_option VARCHAR(10) NOT NULL CHECK (vote_option IN ('cat', 'dog')),
+    source VARCHAR(50) NOT NULL,  -- 'azure' or 'onprem'
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX idx_votes_option ON votes(vote_option);
+CREATE INDEX idx_votes_source ON votes(source);
+```
+
+## 🏆 Project Features Demonstrated
+
+✅ **Hybrid Cloud Architecture**: Azure Arc + AKS integration  
+✅ **Database Integration**: PostgreSQL with persistent storage  
+✅ **Cross-Environment Analytics**: Vote source tracking  
+✅ **Container Orchestration**: Kubernetes deployment patterns  
+✅ **DevOps Automation**: Infrastructure as Code  
+✅ **Real-time Monitoring**: Health checks and status endpoints  
+✅ **Load Balancing**: Traffic distribution strategies  
+✅ **Disaster Recovery**: Database-backed failover scenarios  
+
+## 📋 Troubleshooting
+
+### Common Issues
+
+**Database Connection Failed**
+```bash
+# Check if PostgreSQL is running
+kubectl get pods -l app=postgres
+
+# Check database logs
+kubectl logs deployment/postgres-deployment
+
+# Test connection manually
+kubectl exec -it deployment/postgres-deployment -- psql -U votinguser -d voting_app -c "SELECT 1;"
+```
+
+**Application Won't Start**
+```bash
+# Check application logs
+kubectl logs deployment/voting-app-onprem
+
+# Verify environment variables
+kubectl describe deployment voting-app-onprem | grep -A 10 Environment
+```
+
+**Can't Access Application**
+```bash
+# Check service configuration
+kubectl get svc voting-app-onprem-service
+
+# Verify firewall/ports
+sudo ufw status
+sudo netstat -tlnp | grep 31514
+```
+
+### Resource Requirements
+
+**Minimum System Requirements**:
+- CPU: 2 cores  
+- RAM: 4GB  
+- Disk: 20GB available  
+- Network: Internet connectivity for Azure Arc
+
+**Recommended for Production**:
+- CPU: 4+ cores
+- RAM: 8GB+  
+- Disk: 50GB+ with SSD
+- Network: Stable connectivity with monitoring
+
+## 🎓 Learning Outcomes
+
+After completing this project, you'll understand:
+
+1. **Azure Arc**: How to connect on-premises Kubernetes to Azure
+2. **Hybrid Cloud**: Managing workloads across environments  
+3. **Database Integration**: Persistent storage with Kubernetes
+4. **DevOps Pipelines**: Automated deployment workflows
+5. **Container Orchestration**: Kubernetes deployment patterns
+6. **Monitoring**: Application and infrastructure observability
+7. **Load Testing**: Performance validation techniques
+8. **Disaster Recovery**: Failover and backup strategies
+
+## 📚 Additional Resources
+
+- [Azure Arc Documentation](https://docs.microsoft.com/azure/azure-arc/)
+- [Kubernetes Documentation](https://kubernetes.io/docs/)  
+- [PostgreSQL on Kubernetes](https://kubernetes.io/docs/tutorials/stateful-application/postgresql/)
+- [Flask Web Development](https://flask.palletsprojects.com/)
+- [Docker Best Practices](https://docs.docker.com/develop/best-practices/)
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/awesome-feature`)
+3. Commit your changes (`git commit -m 'Add awesome feature'`)
+4. Push to the branch (`git push origin feature/awesome-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Azure Arc team for hybrid cloud capabilities
+- Kubernetes community for container orchestration
+- PostgreSQL team for robust database foundation  
+- Flask community for web framework excellence
 
 ## 🛠️ Project Structure
 
