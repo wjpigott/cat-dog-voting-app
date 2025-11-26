@@ -169,8 +169,40 @@ def health():
 
 @app.route('/results')
 def results():
-    # Web interface endpoint - same as api_results but without /api prefix
-    return api_results()
+    # Web interface endpoint - returns data in format expected by JavaScript
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM vote_summary ORDER BY vote_choice")
+        db_results = cursor.fetchall()
+        
+        # Convert to format expected by JavaScript
+        summary = []
+        for row in db_results:
+            choice, total, azure, onprem, percentage = row
+            summary.append({
+                'vote_choice': choice,
+                'total_votes': total,
+                'azure_votes': azure,
+                'onprem_votes': onprem,
+                'percentage': float(percentage) if percentage else 0
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'summary': summary,
+            'environment': ENVIRONMENT,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/results')
 def api_results():
