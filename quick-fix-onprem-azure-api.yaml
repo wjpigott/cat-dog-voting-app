@@ -1,0 +1,246 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-onprem-fixed
+  labels:
+    app: voting-app-onprem-fixed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-onprem-fixed
+  template:
+    metadata:
+      labels:
+        app: voting-app-onprem-fixed
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: VOTE_SOURCE
+          value: "onprem"
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "voting_app"
+        - name: DB_USER
+          value: "votinguser"
+        - name: DB_PASSWORD
+          value: "secure_password_123"
+        - name: AZURE_API_URL
+          value: "http://172.169.25.121"
+        - name: FLASK_APP
+          value: "app.py"
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            echo "🚀 Installing dependencies..."
+            pip install flask psycopg2-binary requests
+            echo "📁 Creating application structure..."
+            mkdir -p /app/templates
+            
+            echo "📝 Creating FIXED Flask application with accurate Azure API calls..."
+            cat > /app/app.py << 'PYEOF'
+            from flask import Flask, render_template, request, jsonify
+            import psycopg2
+            import os
+            import requests
+            from datetime import datetime
+            import json
+
+            app = Flask(__name__)
+
+            # Database configuration
+            DB_CONFIG = {
+                'host': os.getenv('DB_HOST', 'postgres-service'),
+                'port': int(os.getenv('DB_PORT', '5432')),
+                'database': os.getenv('DB_NAME', 'voting_app'),
+                'user': os.getenv('DB_USER', 'votinguser'),
+                'password': os.getenv('DB_PASSWORD', 'secure_password_123')
+            }
+
+            # Environment configuration
+            ENVIRONMENT = os.getenv('VOTE_SOURCE', 'onprem')
+            AZURE_API_URL = os.getenv('AZURE_API_URL', 'http://172.169.25.121')
+
+            def get_db_connection():
+                try:
+                    return psycopg2.connect(**DB_CONFIG)
+                except Exception as e:
+                    print(f"Database connection error: {e}")
+                    return None
+
+            def get_local_votes():
+                """Get votes from local database"""
+                conn = get_db_connection()
+                if not conn:
+                    return {'cat': 0, 'dog': 0}
+                
+                try:
+                    cursor = conn.cursor()
+                    # Use vote_choice for on-premises (if it exists) or vote_option for Azure schema
+                    try:
+                        cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                    except:
+                        cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                    
+                    results = cursor.fetchall()
+                    
+                    votes = {'cat': 0, 'dog': 0}
+                    for row in results:
+                        choice, count = row
+                        votes[choice] = count
+                    
+                    cursor.close()
+                    conn.close()
+                    return votes
+                    
+                except Exception as e:
+                    print(f"Error getting local votes: {e}")
+                    return {'cat': 0, 'dog': 0}
+
+            def get_azure_votes():
+                """Get votes from Azure environment via API - FIXED VERSION"""
+                try:
+                    api_url = f"{AZURE_API_URL}/api/local-results"
+                    print(f"🔗 Calling Azure API: {api_url}")
+                    
+                    response = requests.get(api_url, timeout=10)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        print(f"✅ Azure API response: {data}")
+                        
+                        # Extract votes from Azure response
+                        azure_votes = data.get('votes', {'cat': 0, 'dog': 0})
+                        print(f"📊 Azure votes extracted: {azure_votes}")
+                        return azure_votes
+                    else:
+                        print(f"❌ Azure API returned status {response.status_code}")
+                        print(f"Response: {response.text}")
+                        return {'cat': 0, 'dog': 0}
+                        
+                except Exception as e:
+                    print(f"❌ Error getting Azure votes: {e}")
+                    return {'cat': 0, 'dog': 0}
+
+            @app.route('/')
+            def index():
+                # Get local votes (on-premises)
+                local_votes = get_local_votes()
+                print(f"🏠 Local votes: {local_votes}")
+                
+                # Get remote votes (Azure)
+                azure_votes = get_azure_votes()
+                print(f"☁️ Azure votes: {azure_votes}")
+                
+                # Calculate totals
+                total_cat = local_votes.get('cat', 0) + azure_votes.get('cat', 0)
+                total_dog = local_votes.get('dog', 0) + azure_votes.get('dog', 0)
+                total_votes = total_cat + total_dog
+                
+                print(f"📊 Totals - Cats: {total_cat}, Dogs: {total_dog}, Total: {total_votes}")
+                
+                return render_template('voting.html', 
+                                     cat_votes=total_cat,
+                                     dog_votes=total_dog, 
+                                     total_votes=total_votes,
+                                     azure_cat_votes=azure_votes.get('cat', 0),
+                                     azure_dog_votes=azure_votes.get('dog', 0),
+                                     onprem_cat_votes=local_votes.get('cat', 0),
+                                     onprem_dog_votes=local_votes.get('dog', 0),
+                                     environment=ENVIRONMENT)
+
+            @app.route('/api/results')
+            def api_results():
+                """Combined results from both environments"""
+                local_votes = get_local_votes()
+                azure_votes = get_azure_votes()
+                
+                # Calculate totals
+                total_cat = local_votes.get('cat', 0) + azure_votes.get('cat', 0)
+                total_dog = local_votes.get('dog', 0) + azure_votes.get('dog', 0)
+                
+                return jsonify({
+                    'votes': {'cat': total_cat, 'dog': total_dog},
+                    'azure_votes': azure_votes,
+                    'onprem_votes': local_votes,
+                    'total_votes': total_cat + total_dog,
+                    'environment': ENVIRONMENT
+                })
+
+            @app.route('/test-azure')
+            def test_azure():
+                """Debug endpoint to test Azure API"""
+                azure_votes = get_azure_votes()
+                return jsonify({
+                    'azure_api_url': f"{AZURE_API_URL}/api/local-results",
+                    'azure_votes': azure_votes,
+                    'environment': ENVIRONMENT
+                })
+
+            if __name__ == '__main__':
+                print(f"🎯 Starting FIXED on-premises app...")
+                print(f"🌐 Azure API: {AZURE_API_URL}/api/local-results")
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            PYEOF
+            
+            echo "🎨 Creating simple HTML template for testing..."
+            cat > /app/templates/voting.html << 'HTMLEOF'
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Fixed On-Premises Voting</title>
+                <style>
+                    body { font-family: Arial; background: linear-gradient(135deg, #2d5a27, #4caf50); color: white; text-align: center; padding: 50px; }
+                    .card { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 15px; margin: 20px; }
+                    .env-badge { background: linear-gradient(45deg, #2d5a27, #4caf50); padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>🏠 Fixed On-Premises Voting</h1>
+                <div class="env-badge">On-Premises Environment</div>
+                
+                <div class="card">
+                    <h2>🐱 Cats: {{ cat_votes }}</h2>
+                    <h2>🐶 Dogs: {{ dog_votes }}</h2>
+                    <h3>Total: {{ total_votes }}</h3>
+                </div>
+                
+                <div class="card">
+                    <h3>Cross-Environment Breakdown</h3>
+                    <p><strong>☁️ Azure:</strong> {{ azure_cat_votes }} cats, {{ azure_dog_votes }} dogs</p>
+                    <p><strong>🏠 On-Premises:</strong> {{ onprem_cat_votes }} cats, {{ onprem_dog_votes }} dogs</p>
+                </div>
+                
+                <div class="card">
+                    <p><a href="/api/results" style="color: cyan;">API Results</a></p>
+                    <p><a href="/test-azure" style="color: yellow;">Test Azure API</a></p>
+                </div>
+            </body>
+            </html>
+            HTMLEOF
+            
+            echo "🚀 Starting FIXED on-premises application..."
+            cd /app
+            python app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-onprem-fixed-service
+  labels:
+    app: voting-app-onprem-fixed
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 5000
+    nodePort: 31515
+  selector:
+    app: voting-app-onprem-fixed
