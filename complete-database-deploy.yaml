@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: voting-app-db
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: voting-app-db
+type: Opaque
+stringData:
+  POSTGRES_USER: votinguser
+  POSTGRES_PASSWORD: secure_password_123
+  POSTGRES_DB: voting_app
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: voting-app-db
+data:
+  DB_HOST: "postgres-service"
+  DB_NAME: "voting_app"
+  DB_USER: "votinguser"
+  DB_PORT: "5432"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: voting-app-db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  namespace: voting-app-db
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_DB
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "pg_isready -U votinguser -d voting_app"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "pg_isready -U votinguser -d voting_app"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: voting-app-db
+spec:
+  selector:
+    app: postgres
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-db-script
+  namespace: voting-app-db
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS votes (
+        id SERIAL PRIMARY KEY,
+        vote_choice VARCHAR(10) NOT NULL CHECK (vote_choice IN ('cat', 'dog')),
+        vote_source VARCHAR(20) NOT NULL CHECK (vote_source IN ('azure', 'onprem')),
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        ip_address INET,
+        user_agent TEXT,
+        session_id VARCHAR(255)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_votes_choice ON votes(vote_choice);
+    CREATE INDEX IF NOT EXISTS idx_votes_source ON votes(vote_source);
+    CREATE INDEX IF NOT EXISTS idx_votes_timestamp ON votes(timestamp);
+
+    CREATE OR REPLACE VIEW vote_summary AS
+    SELECT 
+        vote_choice,
+        COUNT(*) as total_votes,
+        COUNT(CASE WHEN vote_source = 'azure' THEN 1 END) as azure_votes,
+        COUNT(CASE WHEN vote_source = 'onprem' THEN 1 END) as onprem_votes,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM votes), 2) as percentage
+    FROM votes 
+    GROUP BY vote_choice;
+
+    INSERT INTO votes (vote_choice, vote_source, ip_address) VALUES 
+    ('cat', 'onprem', '10.0.1.100'),
+    ('dog', 'onprem', '10.0.1.101'),
+    ('cat', 'azure', '52.154.54.110')
+    ON CONFLICT DO NOTHING;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-database
+  namespace: voting-app-db
+spec:
+  template:
+    spec:
+      containers:
+      - name: postgres-init
+        image: postgres:15-alpine
+        command: 
+        - /bin/bash
+        - -c
+        - |
+          echo "Waiting for PostgreSQL to be ready..."
+          until pg_isready -h postgres-service -U votinguser -d voting_app; do
+            sleep 2
+          done
+          echo "PostgreSQL is ready, initializing database..."
+          psql -h postgres-service -U votinguser -d voting_app -f /scripts/init.sql
+          echo "Database initialization completed!"
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: init-script
+          mountPath: /scripts
+      volumes:
+      - name: init-script
+        configMap:
+          name: init-db-script
+      restartPolicy: OnFailure
+  backoffLimit: 3
