@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure
+  labels:
+    app: voting-app-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure
+    spec:
+      containers:
+      - name: voting-app
+        image: ghcr.io/wjpigott/voting-app-db:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: VOTE_SOURCE
+          value: "azure"
+        - name: DB_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "voting_app"
+        - name: DB_USER
+          value: "votinguser"
+        - name: DB_PASSWORD
+          value: "SecureVotingPassword123!"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-azure-service
+  labels:
+    app: voting-app-azure
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5000
+  selector:
+    app: voting-app-azure
