@@ -123,14 +123,26 @@ def index():
 
 @app.route('/vote', methods=['POST'])
 def vote():
-    choice = request.form.get('vote')
+    # Handle both form data (traditional) and JSON (AJAX) requests
+    if request.content_type == 'application/json':
+        choice = request.get_json().get('choice')
+        is_ajax = True
+    else:
+        choice = request.form.get('vote')
+        is_ajax = False
     
     if choice not in ['cat', 'dog']:
-        return redirect(url_for('index'))
+        if is_ajax:
+            return jsonify({'success': False, 'error': 'Invalid choice'}), 400
+        else:
+            return redirect(url_for('index'))
     
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Database connection failed'}), 500
+        if is_ajax:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        else:
+            return jsonify({'error': 'Database connection failed'}), 500
     
     try:
         cursor = conn.cursor()
@@ -144,11 +156,22 @@ def vote():
         cursor.close()
         conn.close()
         
-        return redirect(url_for('index'))
+        if is_ajax:
+            return jsonify({
+                'success': True, 
+                'choice': choice,
+                'source': ENVIRONMENT,
+                'message': f'Vote for {choice} recorded successfully!'
+            })
+        else:
+            return redirect(url_for('index'))
         
     except Exception as e:
         print(f"Vote error: {e}")
-        return jsonify({'error': str(e)}), 500
+        if is_ajax:
+            return jsonify({'success': False, 'error': str(e)}), 500
+        else:
+            return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health():
