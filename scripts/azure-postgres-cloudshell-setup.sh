@@ -8,7 +8,7 @@ echo "============================================================"
 # Variables
 RESOURCE_GROUP="rg-cat-dog-voting-demo"
 SERVER_NAME="postgres-cat-dog-voting"
-LOCATION="eastus"
+LOCATION="westus2"
 ADMIN_USER="votinguser"
 ADMIN_PASSWORD="SecureVotingPassword123!"
 DATABASE_NAME="voting_app"
