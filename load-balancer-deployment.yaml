@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-load-balancer
+  labels:
+    app: voting-load-balancer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-load-balancer
+  template:
+    metadata:
+      labels:
+        app: voting-load-balancer
+    spec:
+      containers:
+      - name: load-balancer
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: AZURE_BACKEND
+          value: "52.154.54.110"
+        - name: ONPREM_BACKEND  
+          value: "66.242.207.21:31514"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Create nginx configuration for load balancing with health checks
+            cat > /etc/nginx/nginx.conf << 'EOF'
+            events {
+                worker_connections 1024;
+            }
+            http {
+                upstream voting_backends {
+                    # Azure backend
+                    server 52.154.54.110:80 max_fails=3 fail_timeout=30s;
+                    # OnPrem backend  
+                    server 66.242.207.21:31514 max_fails=3 fail_timeout=30s;
+                }
+                
+                # Health check endpoint
+                server {
+                    listen 80;
+                    
+                    # Health check for the load balancer itself
+                    location /lb-health {
+                        access_log off;
+                        return 200 "Load Balancer Healthy\n";
+                        add_header Content-Type text/plain;
+                    }
+                    
+                    # Main voting application with load balancing
+                    location / {
+                        proxy_pass http://voting_backends;
+                        proxy_set_header Host $host;
+                        proxy_set_header X-Real-IP $remote_addr;
+                        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                        proxy_connect_timeout 5s;
+                        proxy_send_timeout 60s;
+                        proxy_read_timeout 60s;
+                        
+                        # Add headers to identify which backend served the request
+                        add_header X-Served-By "LoadBalancer" always;
+                    }
+                    
+                    # Backend health check endpoint
+                    location /backend-health {
+                        access_log off;
+                        content_by_lua_block {
+                            local http = require "resty.http"
+                            local httpc = http.new()
+                            
+                            -- Check Azure backend
+                            local azure_res, azure_err = httpc:request_uri("http://52.154.54.110/health", {
+                                method = "GET",
+                                timeout = 5000,
+                            })
+                            
+                            -- Check OnPrem backend
+                            local onprem_res, onprem_err = httpc:request_uri("http://66.242.207.21:31514/health", {
+                                method = "GET", 
+                                timeout = 5000,
+                            })
+                            
+                            local azure_status = (azure_res and azure_res.status == 200) and "UP" or "DOWN"
+                            local onprem_status = (onprem_res and onprem_res.status == 200) and "UP" or "DOWN"
+                            
+                            ngx.header.content_type = "application/json"
+                            ngx.say('{"azure_backend":"' .. azure_status .. '","onprem_backend":"' .. onprem_status .. '","load_balancer":"UP"}')
+                        }
+                    }
+                }
+            }
+            EOF
+            
+            echo "🔄 Starting NGINX load balancer..."
+            echo "📍 Azure Backend: 52.154.54.110:80"
+            echo "📍 OnPrem Backend: 66.242.207.21:31514" 
+            echo "❤️ Health checks enabled with 30s failover timeout"
+            
+            # Start nginx in foreground
+            nginx -g 'daemon off;'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-load-balancer-service
+  labels:
+    app: voting-load-balancer
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: voting-load-balancer
