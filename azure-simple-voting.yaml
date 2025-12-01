@@ -46,16 +46,19 @@ spec:
                     cursor.execute("SELECT vote_option, vote_count FROM vote_option")
                     rows = cursor.fetchall()
                     votes = {'cat': 0, 'dog': 0}
+                    print(f"📊 Azure PostgreSQL found {len(rows)} rows:")
                     for option, count in rows:
+                        print(f"  Row: option='{option}', count={count}")
                         if option and 'cat' in option.lower():
                             votes['cat'] = count
                         elif option and 'dog' in option.lower():
                             votes['dog'] = count
                     cursor.close()
                     conn.close()
+                    print(f"✅ Final Azure votes: {votes}")
                     return votes
                 except Exception as e:
-                    print(f"Error: {e}")
+                    print(f"❌ Azure DB Error: {e}")
                     return {'cat': 0, 'dog': 0}
             
             def get_onprem_votes():
