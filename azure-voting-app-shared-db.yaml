@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure
+  labels:
+    app: voting-app-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure
+    spec:
+      containers:
+      - name: voting-app
+        image: voting-app-db:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: VOTE_SOURCE
+          value: "azure"
+        - name: DB_HOST
+          value: "66.242.207.21"  # Your on-premises PostgreSQL
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "voting_app"
+        - name: DB_USER
+          value: "votinguser"
+        - name: DB_PASSWORD
+          value: "secure_password_123"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-azure-service
+spec:
+  selector:
+    app: voting-app-azure
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5000
+    protocol: TCP

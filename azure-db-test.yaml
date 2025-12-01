@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-db-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-db-test
+  template:
+    metadata:
+      labels:
+        app: azure-db-test
+    spec:
+      containers:
+      - name: azure-db-test
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            echo "🔧 Installing psycopg2..."
+            pip install psycopg2-binary flask
+            
+            echo "🧪 Testing Azure PostgreSQL connection..."
+            python3 << 'EOF'
+            import psycopg2
+            import json
+            from flask import Flask, jsonify
+            
+            app = Flask(__name__)
+            
+            def test_azure_db():
+                try:
+                    print("🔗 Connecting to Azure PostgreSQL...")
+                    conn = psycopg2.connect(
+                        host="postgres-cat-dog-voting.postgres.database.azure.com",
+                        database="postgres", 
+                        user="votinguser",
+                        password="SecureVotingPassword123!",
+                        port=5432,
+                        sslmode='require'
+                    )
+                    print("✅ Connection successful!")
+                    
+                    cursor = conn.cursor()
+                    
+                    # Check if vote_option table exists
+                    cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='vote_option')")
+                    table_exists = cursor.fetchone()[0]
+                    print(f"📊 vote_option table exists: {table_exists}")
+                    
+                    if table_exists:
+                        # Get vote counts
+                        cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                        results = cursor.fetchall()
+                        print(f"📊 Raw vote data: {results}")
+                        
+                        votes = {'cat': 0, 'dog': 0}
+                        for row in results:
+                            option, count = row
+                            print(f"  Row: option='{option}', count={count}")
+                            if option and option.lower() in ['cat', 'cats']:
+                                votes['cat'] = count
+                            elif option and option.lower() in ['dog', 'dogs']:
+                                votes['dog'] = count
+                        
+                        print(f"✅ Processed votes: {votes}")
+                        cursor.close()
+                        conn.close()
+                        return {"success": True, "votes": votes, "raw_data": results}
+                    else:
+                        print("❌ vote_option table does not exist!")
+                        cursor.close()
+                        conn.close()
+                        return {"success": False, "error": "vote_option table not found"}
+                        
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    return {"success": False, "error": str(e)}
+            
+            @app.route('/test')
+            def test():
+                result = test_azure_db()
+                return jsonify(result)
+            
+            @app.route('/health')
+            def health():
+                return jsonify({"status": "healthy"})
+            
+            if __name__ == '__main__':
+                print("🚀 Starting Azure DB test server...")
+                # Test on startup
+                startup_result = test_azure_db()
+                print(f"🧪 Startup test result: {startup_result}")
+                
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azure-db-test-service
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 5000
+    nodePort: 31515
+  selector:
+    app: azure-db-test

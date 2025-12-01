@@ -1,0 +1,200 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-network-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-network-test
+  template:
+    metadata:
+      labels:
+        app: voting-app-network-test
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_NAME
+          value: "voting"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres123"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, jsonify
+            import requests
+            import psycopg2
+            import os
+            import logging
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['DB_HOST'],
+                        database=os.environ['DB_NAME'],
+                        user=os.environ['DB_USER'],
+                        password=os.environ['DB_PASSWORD']
+                    )
+                except Exception as e:
+                    logger.error(f"DB connection error: {e}")
+                    return None
+
+            def test_azure_endpoints():
+                """Test various Azure endpoint possibilities"""
+                test_endpoints = [
+                    "http://172.169.25.121/api/local-results",  # Original private IP
+                    "http://172.169.25.121/health",             # Health check
+                ]
+                
+                results = {}
+                for endpoint in test_endpoints:
+                    try:
+                        response = requests.get(endpoint, timeout=5)
+                        results[endpoint] = {
+                            "status": response.status_code,
+                            "reachable": True,
+                            "response": response.text[:200]
+                        }
+                    except Exception as e:
+                        results[endpoint] = {
+                            "status": "error",
+                            "reachable": False,
+                            "error": str(e)
+                        }
+                
+                return results
+
+            @app.route('/test-network')
+            def test_network():
+                """Test network connectivity to various Azure endpoints"""
+                return jsonify(test_azure_endpoints())
+
+            @app.route('/api/results')
+            def get_results():
+                """Get local results only (since Azure is unreachable)"""
+                conn = get_db_connection()
+                local_votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                            except:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type.lower() in ['cat', 'cats']:
+                                    local_votes['cat'] = count
+                                elif vote_type.lower() in ['dog', 'dogs']:
+                                    local_votes['dog'] = count
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Local DB error: {e}")
+
+                # Return local results only with network status
+                network_status = test_azure_endpoints()
+                
+                return jsonify({
+                    'cat': {
+                        'azure': 'unreachable',
+                        'onprem': local_votes['cat']
+                    },
+                    'dog': {
+                        'azure': 'unreachable', 
+                        'onprem': local_votes['dog']
+                    },
+                    'network_test': network_status,
+                    'message': 'Azure endpoint 172.169.25.121 is not reachable from on-premises'
+                })
+
+            @app.route('/health')
+            def health():
+                return jsonify({'status': 'healthy', 'mode': 'network-test'})
+
+            @app.route('/')
+            def index():
+                return '''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Network Test Voting App</title>
+                    <style>
+                        body { font-family: Arial; margin: 40px; background: linear-gradient(135deg, #ff6b6b, #ffa500); }
+                        .container { background: white; padding: 20px; border-radius: 10px; max-width: 600px; }
+                        .error { background: #ffe6e6; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #ff0000; }
+                        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; background: #4CAF50; color: white; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🔧 Network Test Voting App</h1>
+                        
+                        <div class="error">
+                            <h3>⚠️ Network Issue Detected</h3>
+                            <p>Azure endpoint 172.169.25.121 is not reachable from on-premises network.</p>
+                            <p>This app shows local votes only until Azure connectivity is resolved.</p>
+                        </div>
+                        
+                        <button onclick="location.href='/test-network'">Test Network Connectivity</button>
+                        <button onclick="location.href='/api/results'">Get Local Results</button>
+                        
+                        <div id="results"></div>
+                        
+                        <script>
+                            function loadResults() {
+                                fetch('/api/results')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        document.getElementById('results').innerHTML = 
+                                            '<h3>📊 Current Results (Local Only)</h3>' +
+                                            '<p>🐱 Cats: OnPrem=' + data.cat.onprem + ' (Azure=' + data.cat.azure + ')</p>' +
+                                            '<p>🐶 Dogs: OnPrem=' + data.dog.onprem + ' (Azure=' + data.dog.azure + ')</p>' +
+                                            '<p><strong>Total Local Votes: ' + (data.cat.onprem + data.dog.onprem) + '</strong></p>' +
+                                            '<pre>Network Status: ' + JSON.stringify(data.network_test, null, 2) + '</pre>';
+                                    });
+                            }
+                            
+                            setInterval(loadResults, 10000);
+                            loadResults();
+                        </script>
+                    </div>
+                </body>
+                </html>
+                '''
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            python /app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-network-test-service
+spec:
+  selector:
+    app: voting-app-network-test
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 31518
+  type: NodePort

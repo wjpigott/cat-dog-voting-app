@@ -105,24 +105,41 @@ spec:
                     return {'cat': 0, 'dog': 0}
 
             def get_remote_votes():
-                """Get votes from Azure environment via API"""
+                """Get votes from Azure PostgreSQL database directly"""
                 try:
-                    # On-premises app getting Azure data
-                    print(f"🔗 Calling Azure API: {AZURE_API_URL}/api/local-results")
-                    response = requests.get(f"{AZURE_API_URL}/api/local-results", timeout=10)
+                    # Connect directly to Azure PostgreSQL
+                    print("🔗 Connecting to Azure PostgreSQL database...")
+                    azure_conn = psycopg2.connect(
+                        host="postgres-cat-dog-voting.postgres.database.azure.com",
+                        database="postgres",
+                        user="votinguser",
+                        password="SecureVotingPassword123!",
+                        port=5432,
+                        sslmode='require'
+                    )
                     
-                    if response.status_code == 200:
-                        data = response.json()
-                        print(f"✅ Azure API response: {data}")
-                        votes = data.get('votes', {'cat': 0, 'dog': 0})
-                        print(f"📊 Azure votes extracted: {votes}")
-                        return votes
-                    else:
-                        print(f"❌ Azure API returned status {response.status_code}")
-                        return {'cat': 0, 'dog': 0}
-                        
+                    cursor = azure_conn.cursor()
+                    
+                    # Query Azure vote_option table
+                    cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                    results = cursor.fetchall()
+                    
+                    votes = {'cat': 0, 'dog': 0}
+                    for row in results:
+                        option, count = row
+                        if option and option.lower() in ['cat', 'cats']:
+                            votes['cat'] = count
+                        elif option and option.lower() in ['dog', 'dogs']:
+                            votes['dog'] = count
+                    
+                    cursor.close()
+                    azure_conn.close()
+                    
+                    print(f"✅ Azure PostgreSQL votes: {votes}")
+                    return votes
+                    
                 except Exception as e:
-                    print(f"❌ Error getting Azure votes: {e}")
+                    print(f"❌ Error getting Azure PostgreSQL votes: {e}")
                     return {'cat': 0, 'dog': 0}
 
             def init_database():
@@ -781,24 +798,48 @@ spec:
                     return {'cat': 0, 'dog': 0}
 
             def get_remote_votes():
-                """Get votes from remote environment via API"""
+                """Get votes from Azure PostgreSQL database directly"""
                 try:
                     if ENVIRONMENT == 'onprem':
-                        # On-premises app getting Azure data
-                        response = requests.get(f"{AZURE_API_URL}/api/local-results", timeout=5)
+                        # On-premises app getting Azure data directly from Azure PostgreSQL
+                        print("🔗 Connecting to Azure PostgreSQL database...")
+                        azure_conn = psycopg2.connect(
+                            host="postgres-cat-dog-voting.postgres.database.azure.com",
+                            database="postgres",
+                            user="votinguser",
+                            password="SecureVotingPassword123!",
+                            port=5432,
+                            sslmode='require'
+                        )
+                        
+                        cursor = azure_conn.cursor()
+                        cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                        results = cursor.fetchall()
+                        
+                        votes = {'cat': 0, 'dog': 0}
+                        for row in results:
+                            option, count = row
+                            if option and option.lower() in ['cat', 'cats']:
+                                votes['cat'] = count
+                            elif option and option.lower() in ['dog', 'dogs']:
+                                votes['dog'] = count
+                        
+                        cursor.close()
+                        azure_conn.close()
+                        print(f"✅ Azure PostgreSQL votes: {votes}")
+                        return votes
                     else:
-                        # Azure app getting on-premises data  
+                        # Azure app getting on-premises data via API
                         response = requests.get("http://66.242.207.21:31514/api/local-results", timeout=5)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data.get('votes', {'cat': 0, 'dog': 0})
-                    else:
-                        print(f"Remote API returned status {response.status_code}")
-                        return {'cat': 0, 'dog': 0}
+                        if response.status_code == 200:
+                            data = response.json()
+                            return data.get('votes', {'cat': 0, 'dog': 0})
+                        else:
+                            print(f"Remote API returned status {response.status_code}")
+                            return {'cat': 0, 'dog': 0}
                         
                 except Exception as e:
-                    print(f"Error getting remote votes: {e}")
+                    print(f"❌ Error getting remote votes: {e}")
                     return {'cat': 0, 'dog': 0}
 
             def init_database():
