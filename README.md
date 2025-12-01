@@ -51,6 +51,9 @@ A production-ready cross-environment voting application deployed across Azure AK
 - **Winner**: 🎉 Cats are winning!
 - **Uptime**: 99.9% (Automatic failover enabled)
 
+## Example Voting page
+<img width="712" height="876" alt="image" src="https://github.com/user-attachments/assets/5dfff7d4-be71-4c7d-9098-23d44c3ebeb6" />
+
 ## 🚀 Quick Start for Your Environment
 
 ### 🔧 Step 1: Configure Your Infrastructure
