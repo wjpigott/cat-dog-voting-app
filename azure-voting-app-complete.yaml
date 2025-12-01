@@ -1,0 +1,344 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-voting-app-complete
+  labels:
+    app: azure-voting-app-complete
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-voting-app-complete
+  template:
+    metadata:
+      labels:
+        app: azure-voting-app-complete
+    spec:
+      containers:
+      - name: azure-voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            pip install flask psycopg2-binary requests
+            mkdir -p /app/static
+            mkdir -p /app/templates
+            cd /app
+            cat > app.py << 'EOF'
+            from flask import Flask, render_template, request, jsonify, redirect, url_for
+            import psycopg2
+            import requests
+            import json
+            
+            app = Flask(__name__)
+            
+            def get_azure_votes():
+                try:
+                    conn = psycopg2.connect(
+                        host='postgres-cat-dog-voting.postgres.database.azure.com',
+                        port=5432,
+                        database='postgres',
+                        user='votinguser',
+                        password='SecureVotingPassword123!',
+                        sslmode='require'
+                    )
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                    rows = cursor.fetchall()
+                    votes = {'cat': 0, 'dog': 0}
+                    print(f"📊 Azure PostgreSQL found {len(rows)} rows:")
+                    for option, count in rows:
+                        print(f"  Row: option='{option}', count={count}")
+                        if option and 'cat' in option.lower():
+                            votes['cat'] = count
+                        elif option and 'dog' in option.lower():
+                            votes['dog'] = count
+                    cursor.close()
+                    conn.close()
+                    print(f"✅ Final Azure votes: {votes}")
+                    return votes
+                except Exception as e:
+                    print(f"❌ Azure DB Error: {e}")
+                    return {'cat': 0, 'dog': 0}
+            
+            def get_onprem_votes():
+                try:
+                    response = requests.get('http://66.242.207.21:31514/api/results', timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return data.get('onprem_votes', {'cat': 0, 'dog': 0})
+                except Exception as e:
+                    print(f"Error fetching on-prem votes: {e}")
+                return {'cat': 0, 'dog': 0}
+            
+            def cast_azure_vote(vote_type):
+                try:
+                    conn = psycopg2.connect(
+                        host='postgres-cat-dog-voting.postgres.database.azure.com',
+                        port=5432,
+                        database='postgres',
+                        user='votinguser',
+                        password='SecureVotingPassword123!',
+                        sslmode='require'
+                    )
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO vote_option (option) VALUES (%s)", (vote_type,))
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    print(f"✅ Vote cast for {vote_type} in Azure DB")
+                    return True
+                except Exception as e:
+                    print(f"❌ Error casting vote: {e}")
+                    return False
+            
+            @app.route('/')
+            def index():
+                azure_votes = get_azure_votes()
+                onprem_votes = get_onprem_votes()
+                total_cat = azure_votes['cat'] + onprem_votes['cat']
+                total_dog = azure_votes['dog'] + onprem_votes['dog']
+                
+                return render_template('index.html',
+                                     azure_cat=azure_votes['cat'],
+                                     azure_dog=azure_votes['dog'],
+                                     onprem_cat=onprem_votes['cat'],
+                                     onprem_dog=onprem_votes['dog'],
+                                     total_cat=total_cat,
+                                     total_dog=total_dog,
+                                     environment='Azure')
+            
+            @app.route('/vote', methods=['POST'])
+            def vote():
+                vote_type = request.form['vote']
+                if cast_azure_vote(vote_type):
+                    return redirect(url_for('index'))
+                else:
+                    return "Error casting vote", 500
+            
+            @app.route('/api/results')
+            def api_results():
+                azure_votes = get_azure_votes()
+                onprem_votes = get_onprem_votes()
+                total_cat = azure_votes['cat'] + onprem_votes['cat']
+                total_dog = azure_votes['dog'] + onprem_votes['dog']
+                return jsonify({
+                    'environment': 'azure',
+                    'azure_votes': azure_votes,
+                    'onprem_votes': onprem_votes,
+                    'votes': {'cat': total_cat, 'dog': total_dog},
+                    'total_votes': total_cat + total_dog
+                })
+            
+            @app.route('/api/azure-votes')
+            def azure_votes_api():
+                return jsonify(get_azure_votes())
+            
+            @app.route('/health')
+            def health():
+                return jsonify({'status': 'healthy'})
+            
+            if __name__ == '__main__':
+                print("Starting Azure Voting App with Complete UI...")
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            # Create the HTML template
+            cat > templates/index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>🐱🐶 Azure Cat vs Dog Voting</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 20px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                    }
+                    .container {
+                        max-width: 800px;
+                        margin: 0 auto;
+                        background: rgba(255, 255, 255, 0.1);
+                        padding: 30px;
+                        border-radius: 20px;
+                        backdrop-filter: blur(10px);
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                    }
+                    h1 {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        font-size: 2.5em;
+                        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+                    }
+                    .voting-section {
+                        display: flex;
+                        justify-content: space-around;
+                        margin: 40px 0;
+                    }
+                    .vote-option {
+                        text-align: center;
+                        padding: 20px;
+                        background: rgba(255, 255, 255, 0.2);
+                        border-radius: 15px;
+                        min-width: 200px;
+                        transition: transform 0.3s ease;
+                    }
+                    .vote-option:hover {
+                        transform: translateY(-5px);
+                    }
+                    .vote-btn {
+                        background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+                        color: white;
+                        border: none;
+                        padding: 15px 30px;
+                        font-size: 1.2em;
+                        border-radius: 50px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        text-transform: uppercase;
+                        font-weight: bold;
+                        letter-spacing: 1px;
+                    }
+                    .vote-btn:hover {
+                        transform: scale(1.05);
+                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                    }
+                    .cat-btn {
+                        background: linear-gradient(45deg, #ff9a9e, #fecfef);
+                        color: #333;
+                    }
+                    .dog-btn {
+                        background: linear-gradient(45deg, #a8edea, #fed6e3);
+                        color: #333;
+                    }
+                    .emoji {
+                        font-size: 4em;
+                        display: block;
+                        margin: 10px 0;
+                    }
+                    .results {
+                        margin-top: 40px;
+                        padding: 20px;
+                        background: rgba(0, 0, 0, 0.2);
+                        border-radius: 15px;
+                    }
+                    .environment-badge {
+                        background: linear-gradient(45deg, #4facfe, #00f2fe);
+                        padding: 5px 15px;
+                        border-radius: 20px;
+                        font-size: 0.9em;
+                        font-weight: bold;
+                        margin: 5px;
+                        display: inline-block;
+                    }
+                    .vote-count {
+                        font-size: 2em;
+                        font-weight: bold;
+                        margin: 10px 0;
+                    }
+                    .breakdown {
+                        display: flex;
+                        justify-content: space-around;
+                        margin: 20px 0;
+                    }
+                    .env-section {
+                        background: rgba(255, 255, 255, 0.1);
+                        padding: 15px;
+                        border-radius: 10px;
+                        text-align: center;
+                        flex: 1;
+                        margin: 0 10px;
+                    }
+                    .total-section {
+                        background: linear-gradient(45deg, #ffeaa7, #fab1a0);
+                        color: #333;
+                        padding: 20px;
+                        border-radius: 15px;
+                        text-align: center;
+                        margin: 20px 0;
+                        font-weight: bold;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🐱🐶 Azure Cat vs Dog Voting</h1>
+                    <div class="environment-badge">Running on: {{ environment }}</div>
+                    
+                    <div class="voting-section">
+                        <div class="vote-option">
+                            <span class="emoji">🐱</span>
+                            <form method="POST" action="/vote" style="display: inline;">
+                                <input type="hidden" name="vote" value="cat">
+                                <button type="submit" class="vote-btn cat-btn">Vote for Cats!</button>
+                            </form>
+                        </div>
+                        <div class="vote-option">
+                            <span class="emoji">🐶</span>
+                            <form method="POST" action="/vote" style="display: inline;">
+                                <input type="hidden" name="vote" value="dog">
+                                <button type="submit" class="vote-btn dog-btn">Vote for Dogs!</button>
+                            </form>
+                        </div>
+                    </div>
+            
+                    <div class="results">
+                        <h2 style="text-align: center;">📊 Cross-Environment Results</h2>
+                        
+                        <div class="breakdown">
+                            <div class="env-section">
+                                <h3>🔷 Azure Cloud</h3>
+                                <div>🐱 Cats: <span style="color: #ff9a9e; font-weight: bold;">{{ azure_cat }}</span></div>
+                                <div>🐶 Dogs: <span style="color: #a8edea; font-weight: bold;">{{ azure_dog }}</span></div>
+                            </div>
+                            <div class="env-section">
+                                <h3>🏠 On-Premises</h3>
+                                <div>🐱 Cats: <span style="color: #ff9a9e; font-weight: bold;">{{ onprem_cat }}</span></div>
+                                <div>🐶 Dogs: <span style="color: #a8edea; font-weight: bold;">{{ onprem_dog }}</span></div>
+                            </div>
+                        </div>
+            
+                        <div class="total-section">
+                            <h2>🏆 Combined Totals</h2>
+                            <div class="vote-count">
+                                🐱 Cats: {{ total_cat }} | 🐶 Dogs: {{ total_dog }}
+                            </div>
+                            {% if total_cat > total_dog %}
+                                <div style="font-size: 1.5em;">🎉 Cats are winning! 🐱</div>
+                            {% elif total_dog > total_cat %}
+                                <div style="font-size: 1.5em;">🎉 Dogs are winning! 🐶</div>
+                            {% else %}
+                                <div style="font-size: 1.5em;">🤝 It's a tie!</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 30px; opacity: 0.8;">
+                        <p>💡 This Azure deployment shows real-time votes from both Azure cloud and on-premises environments!</p>
+                        <p>🔗 <a href="/api/results" style="color: #ffeaa7;">View JSON API</a></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            EOF
+            
+            python3 app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azure-voting-app-complete-service
+  labels:
+    app: azure-voting-app-complete
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5000
+    protocol: TCP
+  selector:
+    app: azure-voting-app-complete
