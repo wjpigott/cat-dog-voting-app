@@ -19,7 +19,7 @@ spec:
         image: python:3.9-slim
         ports:
         - containerPort: 5000
-        command: ["/bin/bash"]
+        command: ["/bin/bash", "-c"]
         args:
           - |
             echo "🚀 Installing dependencies for Azure cross-environment voting..."
@@ -28,7 +28,7 @@ spec:
             echo "📁 Creating app directory..."
             mkdir -p /app
             
-            echo "� Downloading Azure voting app from GitHub..."
+            echo "📥 Downloading Azure voting app from GitHub..."
             curl -o /app/app.py https://raw.githubusercontent.com/wjpigott/cat-dog-voting-app/main/azure-voting-app.py
             
             echo "🗂️ Changing to /app directory..."
