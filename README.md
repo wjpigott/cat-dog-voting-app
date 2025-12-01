@@ -137,7 +137,7 @@ curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net/api/results
 
 # Test individual environments
 curl http://52.154.54.110/api/results      # Azure direct
-curl http://66.242.207.21:31514/api/results  # OnPrem direct
+curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 ```
 
 📖 **Detailed Setup**: See [CUSTOMER_SETUP.md](CUSTOMER_SETUP.md) for complete instructions.
@@ -153,7 +153,7 @@ curl http://66.242.207.21:31514/api/results  # OnPrem direct
 ### Access Points
 - **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
 - **🔷 Azure Direct**: `http://52.154.54.110`  
-- **🏠 OnPrem Direct**: `http://66.242.207.21:31514`
+- **🏠 OnPrem Direct**: `http://xx.xx.xx.xx:31514`
 
 ### Failover Testing
 ```bash
