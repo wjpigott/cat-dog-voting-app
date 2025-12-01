@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-debug-db
+  labels:
+    app: azure-debug-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-debug-db
+  template:
+    metadata:
+      labels:
+        app: azure-debug-db
+    spec:
+      containers:
+      - name: debug-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        command: 
+          - "/bin/bash"
+          - "-c"
+          - |
+            pip install psycopg2-binary flask
+            mkdir -p /app && cd /app
+            cat > app.py << 'EOF'
+            from flask import Flask, jsonify
+            import psycopg2
+            import traceback
+            
+            app = Flask(__name__)
+            
+            @app.route('/debug-azure-db')
+            def debug_db():
+                try:
+                    print("🔍 Starting Azure PostgreSQL debug...")
+                    
+                    # Test connection
+                    conn = psycopg2.connect(
+                        host='postgres-cat-dog-voting.postgres.database.azure.com',
+                        port=5432,
+                        database='postgres',
+                        user='adminuser',
+                        password='ComplexPassword123!',
+                        sslmode='require'
+                    )
+                    print("✅ Connected to Azure PostgreSQL!")
+                    
+                    cursor = conn.cursor()
+                    
+                    # Test 1: Check what tables exist
+                    cursor.execute("""
+                        SELECT table_name FROM information_schema.tables 
+                        WHERE table_schema = 'public'
+                    """)
+                    tables = cursor.fetchall()
+                    print(f"📋 Tables found: {[t[0] for t in tables]}")
+                    
+                    # Test 2: Check vote_option table structure
+                    if any('vote_option' in str(t) for t in tables):
+                        cursor.execute("""
+                            SELECT column_name, data_type 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'vote_option'
+                        """)
+                        columns = cursor.fetchall()
+                        print(f"📊 vote_option columns: {columns}")
+                        
+                        # Test 3: Get all data from vote_option
+                        cursor.execute("SELECT * FROM vote_option")
+                        all_data = cursor.fetchall()
+                        print(f"📈 All vote_option data ({len(all_data)} rows): {all_data}")
+                        
+                        # Test 4: Try the GROUP BY query
+                        cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                        grouped_data = cursor.fetchall()
+                        print(f"🔢 Grouped data: {grouped_data}")
+                    
+                    cursor.close()
+                    conn.close()
+                    
+                    return jsonify({
+                        'status': 'success',
+                        'tables': [t[0] for t in tables],
+                        'columns': columns if 'columns' in locals() else [],
+                        'all_data': all_data if 'all_data' in locals() else [],
+                        'grouped_data': grouped_data if 'grouped_data' in locals() else []
+                    })
+                    
+                except Exception as e:
+                    error_details = traceback.format_exc()
+                    print(f"❌ Error: {e}")
+                    print(f"Full traceback: {error_details}")
+                    return jsonify({
+                        'status': 'error',
+                        'error': str(e),
+                        'traceback': error_details
+                    }), 500
+            
+            @app.route('/')
+            def index():
+                return '<h1>Azure DB Debug</h1><p><a href="/debug-azure-db">Debug Azure Database</a></p>'
+            
+            if __name__ == '__main__':
+                print("🚀 Starting Azure DB debug app...")
+                app.run(host='0.0.0.0', port=5000)
+            EOF
+            python3 app.py
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azure-debug-db-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5000
+  selector:
+    app: azure-debug-db
