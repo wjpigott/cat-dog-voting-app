@@ -1,0 +1,287 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-public-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-public-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-public-azure
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_NAME
+          value: "voting"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres123"
+        - name: AZURE_API_URL
+          value: "http://52.154.54.110/api/local-results"  # Public IP
+        - name: AZURE_API_URL_BACKUP
+          value: "http://catdog-lb-simple.centralus.cloudapp.azure.com/api/local-results"  # FQDN
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"  
+            cpu: "500m"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, render_template, request, jsonify
+            import psycopg2
+            import requests
+            import json
+            import os
+            import time
+            import logging
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['DB_HOST'],
+                        database=os.environ['DB_NAME'],
+                        user=os.environ['DB_USER'],
+                        password=os.environ['DB_PASSWORD']
+                    )
+                except Exception as e:
+                    logger.error(f"DB connection error: {e}")
+                    return None
+
+            def get_azure_votes():
+                """Get Azure votes with public endpoint fallback"""
+                azure_urls = [
+                    os.environ.get('AZURE_API_URL'),
+                    os.environ.get('AZURE_API_URL_BACKUP')
+                ]
+                
+                for azure_url in azure_urls:
+                    if not azure_url:
+                        continue
+                        
+                    logger.info(f"🔍 Trying Azure API: {azure_url}")
+                    
+                    try:
+                        response = requests.get(azure_url, timeout=15)
+                        logger.info(f"📊 Response status: {response.status_code}")
+                        logger.info(f"📊 Response text: {response.text}")
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            logger.info(f"📊 Parsed Azure data: {data}")
+                            
+                            if 'votes' in data:
+                                votes = data['votes']
+                                result = {
+                                    'cat': votes.get('cat', 0),
+                                    'dog': votes.get('dog', 0)
+                                }
+                                logger.info(f"✅ Successfully got Azure votes: {result}")
+                                return result
+                    
+                    except requests.exceptions.Timeout:
+                        logger.warning(f"⏰ Timeout for {azure_url}")
+                        continue
+                    except requests.exceptions.ConnectionError:
+                        logger.warning(f"🔌 Connection failed for {azure_url}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"💥 Error with {azure_url}: {e}")
+                        continue
+                
+                logger.warning("❌ All Azure URLs failed")
+                return {'cat': 0, 'dog': 0}
+
+            @app.route('/test-azure')
+            def test_azure():
+                """Test Azure connectivity with both URLs"""
+                results = {}
+                azure_urls = [
+                    os.environ.get('AZURE_API_URL'),
+                    os.environ.get('AZURE_API_URL_BACKUP')
+                ]
+                
+                for azure_url in azure_urls:
+                    if not azure_url:
+                        continue
+                    try:
+                        response = requests.get(azure_url, timeout=10)
+                        results[azure_url] = {
+                            "status": response.status_code,
+                            "response": response.text[:500],
+                            "success": response.status_code == 200
+                        }
+                    except Exception as e:
+                        results[azure_url] = {
+                            "error": str(e),
+                            "success": False
+                        }
+                
+                return jsonify(results)
+
+            @app.route('/api/results')
+            def get_results():
+                # Get local votes
+                conn = get_db_connection()
+                local_votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                            except:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type.lower() in ['cat', 'cats']:
+                                    local_votes['cat'] = count
+                                elif vote_type.lower() in ['dog', 'dogs']:
+                                    local_votes['dog'] = count
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Local DB error: {e}")
+
+                # Get Azure votes with public endpoints
+                azure_votes = get_azure_votes()
+                
+                return jsonify({
+                    'cat': {
+                        'azure': azure_votes['cat'],
+                        'onprem': local_votes['cat']
+                    },
+                    'dog': {
+                        'azure': azure_votes['dog'], 
+                        'onprem': local_votes['dog']
+                    },
+                    'total': {
+                        'cat': azure_votes['cat'] + local_votes['cat'],
+                        'dog': azure_votes['dog'] + local_votes['dog']
+                    }
+                })
+
+            @app.route('/health')
+            def health():
+                return jsonify({
+                    'status': 'healthy', 
+                    'azure_endpoints': [
+                        os.environ.get('AZURE_API_URL'), 
+                        os.environ.get('AZURE_API_URL_BACKUP')
+                    ]
+                })
+
+            @app.route('/')
+            def index():
+                return '''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>🌐 Public Azure API Voting App</title>
+                    <style>
+                        body { font-family: Arial; margin: 40px; background: linear-gradient(135deg, #2e8b57, #90ee90); }
+                        .container { background: white; padding: 20px; border-radius: 10px; max-width: 700px; }
+                        .success { background: #e6ffe6; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #00ff00; }
+                        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; background: #4CAF50; color: white; }
+                        .vote-btn { font-size: 20px; padding: 15px 30px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🐱🐶 Cross-Environment Voting App</h1>
+                        <h2>🌐 Public Azure API Integration</h2>
+                        
+                        <div class="success">
+                            <h3>✅ Now Using Public Azure Endpoints</h3>
+                            <p>Primary: 52.154.54.110 | Backup: catdog-lb-simple.centralus.cloudapp.azure.com</p>
+                        </div>
+                        
+                        <div style="text-align: center; margin: 20px 0;">
+                            <button class="vote-btn" onclick="vote('cat')">🐱 Vote for Cats</button>
+                            <button class="vote-btn" onclick="vote('dog')">🐶 Vote for Dogs</button>
+                        </div>
+                        
+                        <button onclick="testAzure()">🧪 Test Azure Connectivity</button>
+                        <button onclick="loadResults()">📊 Refresh Results</button>
+                        
+                        <div id="results"></div>
+                        <div id="azure-test"></div>
+                        
+                        <script>
+                            function vote(animal) {
+                                fetch('/vote', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({vote: animal})
+                                }).then(() => loadResults());
+                            }
+                            
+                            function testAzure() {
+                                fetch('/test-azure')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        document.getElementById('azure-test').innerHTML = 
+                                            '<h4>🌐 Azure Connectivity Test</h4>' +
+                                            '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                                    });
+                            }
+                            
+                            function loadResults() {
+                                fetch('/api/results')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        document.getElementById('results').innerHTML = 
+                                            '<h3>📊 Cross-Environment Voting Results</h3>' +
+                                            '<p>🐱 <strong>Cats Total: ' + data.total.cat + '</strong> (Azure: ' + data.cat.azure + ', OnPrem: ' + data.cat.onprem + ')</p>' +
+                                            '<p>🐶 <strong>Dogs Total: ' + data.total.dog + '</strong> (Azure: ' + data.dog.azure + ', OnPrem: ' + data.dog.onprem + ')</p>' +
+                                            '<p><strong>🎉 Grand Total: ' + (data.total.cat + data.total.dog) + ' votes across both environments!</strong></p>';
+                                    });
+                            }
+                            
+                            // Auto-refresh every 15 seconds
+                            setInterval(loadResults, 15000);
+                            loadResults();
+                        </script>
+                    </div>
+                </body>
+                </html>
+                '''
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            python /app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-public-azure-service
+spec:
+  selector:
+    app: voting-app-public-azure
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 31520
+  type: NodePort
