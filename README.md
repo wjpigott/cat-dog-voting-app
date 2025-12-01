@@ -44,12 +44,43 @@ A production-ready cross-environment voting application deployed across Azure AK
 ```
 
 ## 🎯 Current Status
-- **� Load Balanced**: http://172.168.251.177 (High Availability)
+- **🔄 Load Balanced**: http://172.168.251.177 (High Availability)
 - **Azure Cloud**: 6 Cats 🐱, 3 Dogs 🐶
 - **On-Premises**: 12 Cats 🐱, 8 Dogs 🐶  
 - **Combined Total**: 18 Cats 🐱, 11 Dogs 🐶
 - **Winner**: 🎉 Cats are winning!
 - **Uptime**: 99.9% (Automatic failover enabled)
+
+## ⚡ **RECOMMENDED: Azure Traffic Manager for True HA**
+
+**For production environments**, use Azure Traffic Manager instead of the NGINX load balancer:
+
+### Why Traffic Manager is Better:
+- ✅ **External to both clusters** - Survives any single environment failure
+- ✅ **Global DNS-based load balancing** - Enterprise-grade 99.99% SLA  
+- ✅ **Built-in health monitoring** - 30-second health checks with automatic failover
+- ✅ **Zero infrastructure overhead** - No additional containers to manage
+
+### Deploy Traffic Manager:
+
+```powershell
+# PowerShell deployment
+.\scripts\deploy-traffic-manager.ps1
+```
+
+```bash
+# Azure CLI deployment  
+.\scripts\deploy-traffic-manager.sh
+```
+
+**Result**: Get a global URL like `http://voting-app-tm-xxxx.trafficmanager.net` that automatically routes to the healthy environment!
+
+### Traffic Manager Architecture:
+```
+🌍 Global DNS (Traffic Manager)
+├── Priority 1: Azure AKS (52.154.54.110) 
+└── Priority 2: OnPrem K3s (66.242.207.21:31514)
+```
 
 ## Example Voting page
 <img width="712" height="876" alt="image" src="https://github.com/user-attachments/assets/5dfff7d4-be71-4c7d-9098-23d44c3ebeb6" />

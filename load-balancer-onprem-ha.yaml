@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-load-balancer-ha
+  namespace: default
+  labels:
+    app: voting-load-balancer-ha
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: voting-load-balancer-ha
+  template:
+    metadata:
+      labels:
+        app: voting-load-balancer-ha
+    spec:
+      containers:
+      - name: load-balancer
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi" 
+            cpu: "100m"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Create nginx configuration for HA load balancing
+            cat > /etc/nginx/nginx.conf << 'EOF'
+            events {
+                worker_connections 1024;
+            }
+            http {
+                # Define upstream backends - Azure primary, OnPrem backup
+                upstream voting_backends {
+                    # Azure backend (primary) - will auto-fail when down
+                    server 52.154.54.110:80 weight=3 max_fails=2 fail_timeout=10s;
+                    # OnPrem backend (always available as backup)
+                    server 127.0.0.1:31514 weight=1 max_fails=1 fail_timeout=5s backup;
+                }
+                
+                server {
+                    listen 80;
+                    
+                    # Health check endpoint
+                    location /health {
+                        access_log off;
+                        return 200 "HA Load Balancer OK - Deployed on OnPrem";
+                        add_header Content-Type text/plain;
+                    }
+                    
+                    # Backend status
+                    location /lb-status {
+                        access_log off;
+                        return 200 "Primary: Azure(52.154.54.110) | Backup: OnPrem(Local) | Status: HA Mode";
+                        add_header Content-Type text/plain;
+                    }
+                    
+                    # Main application with smart failover
+                    location / {
+                        proxy_pass http://voting_backends;
+                        proxy_set_header Host $host;
+                        proxy_set_header X-Real-IP $remote_addr;
+                        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                        proxy_connect_timeout 3s;
+                        proxy_send_timeout 10s;
+                        proxy_read_timeout 10s;
+                        
+                        # Aggressive failover for true HA
+                        proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+                        proxy_next_upstream_tries 3;
+                        proxy_next_upstream_timeout 30s;
+                        
+                        # Headers for debugging
+                        add_header X-Load-Balanced "OnPrem-HA-Mode" always;
+                        add_header X-Upstream-Server $upstream_addr always;
+                    }
+                }
+            }
+            EOF
+            
+            echo "🏗️  HA LOAD BALANCER STARTING ON ON-PREMISES"
+            echo "🎯 Primary Target: Azure AKS (52.154.54.110)"
+            echo "🔄 Backup Target: OnPrem Local (127.0.0.1:31514)" 
+            echo "⚡ Fast Failover: 2 failures = immediate backup switch"
+            echo "🛡️  High Availability: Survives Azure outages!"
+            
+            # Start nginx
+            nginx -g 'daemon off;'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-load-balancer-ha-service
+  labels:
+    app: voting-load-balancer-ha
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 31515
+    protocol: TCP
+  selector:
+    app: voting-load-balancer-ha
