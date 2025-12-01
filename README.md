@@ -6,22 +6,24 @@ A production-ready cross-environment voting application deployed across Azure AK
 
 ## 🏗️ Live Architecture
 
+**🌍 Azure Traffic Manager (Enterprise High Availability)**
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              🌐 Cross-Environment Voting System             │
-│      (Enterprise-grade HA with automatic failover)          │
-│   🎯 Load Balanced: http://172.168.251.177                  │
+│           � Azure Traffic Manager (Global DNS)              │
+│        (True HA - Independent of both environments)        │
+│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net   │
 │   📊 Azure Direct: http://52.154.54.110                     │
-│   � OnPrem Direct: http://xx.xx.xx.xx:31514               │
+│   🏠 OnPrem Direct: http://66.242.207.21:31514              │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
                    ▼                     ▼
          ┌─────────────────────┐    ┌─────────────────────┐
-         │  � NGINX Load      │    │   👥 Users Access   │
-         │     Balancer        │    │   Any Endpoint      │
-         │ (172.168.251.177)   │    │                     │
-         │   Auto Failover     │    │                     │
+         │  🌍 Global DNS      │    │   👥 Users Access   │
+         │   Load Balancing    │    │   Single URL        │
+         │  30sec Health Chks  │    │  Automatic Failover │
+         │  Priority Routing   │    │                     │
          └─────────────────────┘    └─────────────────────┘
                    │
           ┌────────┴────────┐
@@ -44,38 +46,37 @@ A production-ready cross-environment voting application deployed across Azure AK
 ```
 
 ## 🎯 Current Status
-- **🔄 Load Balanced**: http://172.168.251.177 (High Availability)
-- **Azure Cloud**: 6 Cats 🐱, 3 Dogs 🐶
+- **🌍 Traffic Manager**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net
+- **Azure Cloud**: 7 Cats 🐱, 4 Dogs 🐶
 - **On-Premises**: 12 Cats 🐱, 8 Dogs 🐶  
-- **Combined Total**: 18 Cats 🐱, 11 Dogs 🐶
+- **Combined Total**: 19 Cats 🐱, 12 Dogs 🐶
 - **Winner**: 🎉 Cats are winning!
-- **Uptime**: 99.9% (Automatic failover enabled)
+- **Uptime**: 99.99% (Global DNS-based failover)
 
-## ⚡ **RECOMMENDED: Azure Traffic Manager for True HA**
+## 🚀 **Azure Traffic Manager - Enterprise High Availability**
 
-**For production environments**, use Azure Traffic Manager instead of the NGINX load balancer:
+This project now uses **Azure Traffic Manager** for true enterprise-grade high availability:
 
-### Why Traffic Manager is Better:
-- ✅ **External to both clusters** - Survives any single environment failure
-- ✅ **Global DNS-based load balancing** - Enterprise-grade 99.99% SLA  
-- ✅ **Built-in health monitoring** - 30-second health checks with automatic failover
-- ✅ **Zero infrastructure overhead** - No additional containers to manage
+### ✅ **Why Traffic Manager is Superior:**
+- 🌍 **Global DNS-based load balancing** - 99.99% SLA
+- 🔄 **External to both clusters** - Survives any single environment failure
+- ⚡ **Built-in health monitoring** - 30-second health checks with automatic failover
+- 🛡️ **Zero infrastructure overhead** - No additional containers to manage
+- 🌐 **Global presence** - Used by Fortune 500 companies worldwide
 
-### Deploy Traffic Manager:
+### 🚀 **Deploy Traffic Manager:**
 
 ```powershell
-# PowerShell deployment
-.\scripts\deploy-traffic-manager.ps1
+# Main deployment script (recommended)
+.\scripts\deploy-traffic-manager-alternative.ps1
+
+# Manual deployment guide
+.\scripts\DEPLOY-GUIDE.ps1
 ```
 
-```bash
-# Azure CLI deployment  
-.\scripts\deploy-traffic-manager.sh
-```
+**Result**: Get a global URL like `http://voting-app-tm-XXXX.trafficmanager.net` that automatically routes to the healthy environment!
 
-**Result**: Get a global URL like `http://voting-app-tm-xxxx.trafficmanager.net` that automatically routes to the healthy environment!
-
-### Traffic Manager Architecture:
+### 🎯 **Traffic Manager Architecture:**
 ```
 🌍 Global DNS (Traffic Manager)
 ├── Priority 1: Azure AKS (52.154.54.110) 
@@ -131,8 +132,8 @@ AZURE_POSTGRES_PASSWORD="your-password"
 
 **Example Test Commands:**
 ```bash
-# Test load balanced endpoint (high availability)
-curl http://172.168.251.177/api/results
+# Test Traffic Manager (high availability - recommended)
+curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net/api/results
 
 # Test individual environments
 curl http://52.154.54.110/api/results      # Azure direct
@@ -141,16 +142,16 @@ curl http://66.242.207.21:31514/api/results  # OnPrem direct
 
 📖 **Detailed Setup**: See [CUSTOMER_SETUP.md](CUSTOMER_SETUP.md) for complete instructions.
 
-## � High Availability & Load Balancing
+## 🌍 Enterprise High Availability
 
-### Enterprise-Grade Features
-✅ **Automatic Failover**: Zero-downtime switching between Azure and on-premises  
-✅ **Health Monitoring**: Continuous monitoring every 30 seconds  
-✅ **Load Distribution**: 75% Azure (primary) + 25% OnPrem (backup)  
-✅ **Smart Recovery**: Automatic traffic restoration when backends recover  
+### Traffic Manager Features
+✅ **Global DNS Load Balancing**: 99.99% SLA worldwide  
+✅ **Automatic Health Monitoring**: 30-second health checks  
+✅ **Priority-based Routing**: Azure primary, OnPrem backup  
+✅ **Smart Failover**: Instant DNS-level traffic redirection  
 
 ### Access Points
-- **🎯 Load Balanced** (Recommended): `http://172.168.251.177`
+- **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
 - **🔷 Azure Direct**: `http://52.154.54.110`  
 - **🏠 OnPrem Direct**: `http://66.242.207.21:31514`
 
