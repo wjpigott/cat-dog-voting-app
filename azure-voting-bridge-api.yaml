@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-azure-bridge
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure-bridge
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "voting_app"
+        - name: DB_USER
+          value: "votinguser"
+        - name: DB_PASSWORD
+          value: "SecureVotingPassword123!"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"  
+            cpu: "500m"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, jsonify
+            import psycopg2
+            import os
+            import logging
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['DB_HOST'],
+                        port=os.environ['DB_PORT'],
+                        database=os.environ['DB_NAME'],
+                        user=os.environ['DB_USER'],
+                        password=os.environ['DB_PASSWORD'],
+                        sslmode='require'
+                    )
+                except Exception as e:
+                    logger.error(f"DB connection error: {e}")
+                    return None
+
+            @app.route('/api/local-results')
+            def get_local_results():
+                """Get Azure vote results in the expected format"""
+                conn = get_db_connection()
+                votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            # Try different column names for compatibility
+                            try:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            except:
+                                try:
+                                    cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                                except:
+                                    cursor.execute("SELECT option_name, COUNT(*) FROM votes GROUP BY option_name")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type and vote_type.lower() in ['cat', 'cats']:
+                                    votes['cat'] = count
+                                elif vote_type and vote_type.lower() in ['dog', 'dogs']:
+                                    votes['dog'] = count
+                        conn.close()
+                        logger.info(f"✅ Azure votes retrieved: {votes}")
+                    except Exception as e:
+                        logger.error(f"Query error: {e}")
+
+                return jsonify({'votes': votes})
+
+            @app.route('/health')
+            def health():
+                return jsonify({'status': 'healthy', 'service': 'azure-api-bridge'})
+
+            @app.route('/api/results')
+            def get_results():
+                """Alternative endpoint name"""
+                return get_local_results()
+
+            @app.route('/')
+            def index():
+                return jsonify({
+                    'message': 'Azure API Bridge Service',
+                    'endpoints': ['/api/local-results', '/health', '/api/results'],
+                    'purpose': 'Provides API access to Azure PostgreSQL vote data'
+                })
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            python /app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-azure-bridge-service
+spec:
+  selector:
+    app: voting-app-azure-bridge
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer

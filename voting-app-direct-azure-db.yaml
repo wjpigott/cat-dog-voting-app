@@ -1,0 +1,309 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-direct-azure-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-direct-azure-db
+  template:
+    metadata:
+      labels:
+        app: voting-app-direct-azure-db
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_NAME
+          value: "voting"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres123"
+        - name: AZURE_DB_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: AZURE_DB_NAME
+          value: "voting_app"
+        - name: AZURE_DB_USER
+          value: "votinguser"
+        - name: AZURE_DB_PASSWORD
+          value: "SecureVotingPassword123!"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"  
+            cpu: "500m"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, render_template, request, jsonify
+            import psycopg2
+            import os
+            import logging
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_local_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['DB_HOST'],
+                        database=os.environ['DB_NAME'],
+                        user=os.environ['DB_USER'],
+                        password=os.environ['DB_PASSWORD']
+                    )
+                except Exception as e:
+                    logger.error(f"Local DB connection error: {e}")
+                    return None
+
+            def get_azure_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['AZURE_DB_HOST'],
+                        database=os.environ['AZURE_DB_NAME'],
+                        user=os.environ['AZURE_DB_USER'],
+                        password=os.environ['AZURE_DB_PASSWORD'],
+                        port=5432,
+                        sslmode='require'
+                    )
+                except Exception as e:
+                    logger.error(f"Azure DB connection error: {e}")
+                    return None
+
+            def get_azure_votes_direct():
+                """Get Azure votes directly from Azure PostgreSQL database"""
+                conn = get_azure_db_connection()
+                votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            # Try different column names used in Azure
+                            try:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            except:
+                                try:
+                                    cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                                except:
+                                    cursor.execute("SELECT option_name, COUNT(*) FROM votes GROUP BY option_name")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type and vote_type.lower() in ['cat', 'cats']:
+                                    votes['cat'] = count
+                                elif vote_type and vote_type.lower() in ['dog', 'dogs']:
+                                    votes['dog'] = count
+                        conn.close()
+                        logger.info(f"✅ Direct Azure DB votes: {votes}")
+                    except Exception as e:
+                        logger.error(f"Azure DB query error: {e}")
+
+                return votes
+
+            @app.route('/test-azure-db')
+            def test_azure_db():
+                """Test direct Azure database connection"""
+                try:
+                    azure_votes = get_azure_votes_direct()
+                    return jsonify({
+                        'success': True,
+                        'azure_votes': azure_votes,
+                        'method': 'direct_database_connection'
+                    })
+                except Exception as e:
+                    return jsonify({
+                        'success': False,
+                        'error': str(e),
+                        'method': 'direct_database_connection'
+                    })
+
+            @app.route('/api/results')
+            def get_results():
+                # Get local votes
+                conn = get_local_db_connection()
+                local_votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                            except:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type.lower() in ['cat', 'cats']:
+                                    local_votes['cat'] = count
+                                elif vote_type.lower() in ['dog', 'dogs']:
+                                    local_votes['dog'] = count
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Local DB error: {e}")
+
+                # Get Azure votes directly from Azure database
+                azure_votes = get_azure_votes_direct()
+                
+                return jsonify({
+                    'cat': {
+                        'azure': azure_votes['cat'],
+                        'onprem': local_votes['cat']
+                    },
+                    'dog': {
+                        'azure': azure_votes['dog'], 
+                        'onprem': local_votes['dog']
+                    },
+                    'total': {
+                        'cat': azure_votes['cat'] + local_votes['cat'],
+                        'dog': azure_votes['dog'] + local_votes['dog']
+                    },
+                    'method': 'direct_database_access'
+                })
+
+            @app.route('/health')
+            def health():
+                return jsonify({
+                    'status': 'healthy', 
+                    'mode': 'direct-azure-db',
+                    'azure_db_host': os.environ.get('AZURE_DB_HOST')
+                })
+
+            @app.route('/vote', methods=['POST'])
+            def vote():
+                """Handle voting"""
+                vote_data = request.get_json()
+                if not vote_data or 'vote' not in vote_data:
+                    return jsonify({'error': 'Invalid vote data'}), 400
+                
+                vote_choice = vote_data['vote'].lower()
+                if vote_choice not in ['cat', 'dog']:
+                    return jsonify({'error': 'Invalid vote choice'}), 400
+                
+                conn = get_local_db_connection()
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("INSERT INTO votes (vote_choice) VALUES (%s)", (vote_choice,))
+                            except:
+                                cursor.execute("INSERT INTO votes (vote_option) VALUES (%s)", (vote_choice,))
+                        conn.commit()
+                        conn.close()
+                        return jsonify({'success': True, 'vote': vote_choice})
+                    except Exception as e:
+                        logger.error(f"Vote insert error: {e}")
+                        return jsonify({'error': str(e)}), 500
+                
+                return jsonify({'error': 'Database connection failed'}), 500
+
+            @app.route('/')
+            def index():
+                return '''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>🌐 Direct Azure DB Voting App</title>
+                    <style>
+                        body { font-family: Arial; margin: 40px; background: linear-gradient(135deg, #2e8b57, #90ee90); }
+                        .container { background: white; padding: 20px; border-radius: 10px; max-width: 700px; }
+                        .success { background: #e6ffe6; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #00ff00; }
+                        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; background: #4CAF50; color: white; }
+                        .vote-btn { font-size: 20px; padding: 15px 30px; background: linear-gradient(45deg, #4CAF50, #2196F3); }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🐱🐶 Cross-Environment Voting App</h1>
+                        <h2>🔗 Direct Azure Database Access</h2>
+                        
+                        <div class="success">
+                            <h3>✅ Direct Azure Database Connection</h3>
+                            <p>Accessing Azure PostgreSQL directly for real-time vote data!</p>
+                        </div>
+                        
+                        <div style="text-align: center; margin: 20px 0;">
+                            <button class="vote-btn" onclick="vote('cat')">🐱 Vote for Cats</button>
+                            <button class="vote-btn" onclick="vote('dog')">🐶 Vote for Dogs</button>
+                        </div>
+                        
+                        <button onclick="loadResults()">📊 Refresh Results</button>
+                        <button onclick="testAzureDb()">🧪 Test Azure DB Connection</button>
+                        
+                        <div id="results"></div>
+                        <div id="azure-test"></div>
+                        
+                        <script>
+                            function vote(animal) {
+                                fetch('/vote', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({vote: animal})
+                                }).then(r => r.json()).then(data => {
+                                    if (data.success) {
+                                        loadResults();
+                                        alert('Vote recorded for ' + animal + '!');
+                                    }
+                                });
+                            }
+                            
+                            function testAzureDb() {
+                                fetch('/test-azure-db')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        document.getElementById('azure-test').innerHTML = 
+                                            '<h4>🔗 Azure DB Test</h4>' +
+                                            '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                                    });
+                            }
+                            
+                            function loadResults() {
+                                fetch('/api/results')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        document.getElementById('results').innerHTML = 
+                                            '<h3>📊 Cross-Environment Results (Live DB Access)</h3>' +
+                                            '<p>🐱 <strong>Cats Total: ' + data.total.cat + '</strong> (Azure: ' + data.cat.azure + ', OnPrem: ' + data.cat.onprem + ')</p>' +
+                                            '<p>🐶 <strong>Dogs Total: ' + data.total.dog + '</strong> (Azure: ' + data.dog.azure + ', OnPrem: ' + data.dog.onprem + ')</p>' +
+                                            '<p><strong>🎉 Grand Total: ' + (data.total.cat + data.total.dog) + ' votes across both environments!</strong></p>' +
+                                            '<p><em>Method: ' + data.method + '</em></p>';
+                                    });
+                            }
+                            
+                            setInterval(loadResults, 15000);
+                            loadResults();
+                        </script>
+                    </div>
+                </body>
+                </html>
+                '''
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            python /app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-direct-azure-db-service
+spec:
+  selector:
+    app: voting-app-direct-azure-db
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 31522
+  type: NodePort
