@@ -12,7 +12,7 @@ A production-ready cross-environment voting application deployed across Azure AK
 │      (Enterprise-grade HA with automatic failover)          │
 │   🎯 Load Balanced: http://172.168.251.177                  │
 │   📊 Azure Direct: http://52.154.54.110                     │
-│   � OnPrem Direct: http://66.242.207.21:31514               │
+│   � OnPrem Direct: http://xx.xx.xx.xx:31514               │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
