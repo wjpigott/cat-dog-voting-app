@@ -10,19 +10,11 @@ A production-ready cross-environment voting application deployed across Azure AK
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-<<<<<<< HEAD
 │           🌍 Azure Traffic Manager (Global DNS)            │
 │        (True HA - Independent of both environments)        │
-│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net:31514 │
+│   🎯 HA URL: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514 │
 │   📊 Azure Direct: http://172.169.36.153:31514             │
-│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514             │
-=======
-│           � Azure Traffic Manager (Global DNS)              │
-│        (True HA - Independent of both environments)          │
-│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net   │
-│   📊 Azure Direct: http://52.154.54.110                     │
-│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514              │
->>>>>>> 05685f60bd726295a77d5067ad8eb44ebc974a87
+│   🏠 OnPrem Direct: http://66.242.207.21:31514             │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
@@ -39,9 +31,9 @@ A production-ready cross-environment voting application deployed across Azure AK
 ┌─────────────────┐  ┌─────────────────┐
 │  🔷 Azure AKS   │  │  🏠 OnPrem K3s │
 │  Primary Backend│  │  Backup Backend │
-│ 52.154.54.110   │  │ xx.xx.xx.xx     │
+│ 172.169.36.153  │  │ 66.242.207.21   │
 │   Weight: 3     │  │   Weight: 1     │
-│ ❤️Health: /health│  │ ❤️Health: /health│
+│ ❤️Health: TCP:31514│  │ ❤️Health: TCP:31514│
 └─────────────────┘  └─────────────────┘
          │                       │
          ▼                       ▼
@@ -89,8 +81,8 @@ This project now uses **Azure Traffic Manager** for true enterprise-grade high a
 ### 🎯 **Traffic Manager Architecture:**
 ```
 🌍 Global DNS (Traffic Manager)
-├── Priority 1: Azure AKS (52.154.54.110) 
-└── Priority 2: OnPrem K3s (xx.xx.xx.xx:31514)
+├── Priority 1: Azure AKS (172.169.36.153:31514) 
+└── Priority 2: OnPrem K3s (66.242.207.21:31514)
 ```
 
 ## Example Voting page
@@ -158,7 +150,7 @@ curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 
 📖 **Troubleshooting**: See [TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md](TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md) for port mismatch issues.
 
-📖 **Archive**: [ONPREM_HEALTH_PROXY_INSTRUCTIONS.md](ONPREM_HEALTH_PROXY_INSTRUCTIONS.md) contains proxy setup (not needed with current port 31514 solution).
+📖 **Archive**: [archive/outdated-proxy-configs/](archive/outdated-proxy-configs/) contains old proxy setups (not needed with current port 31514 solution).
 
 ## 🌍 Enterprise High Availability
 
