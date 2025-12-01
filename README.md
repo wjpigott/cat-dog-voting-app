@@ -154,7 +154,11 @@ curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 
 📖 **Port Planning**: See [TRAFFIC_MANAGER_BEST_PRACTICES.md](TRAFFIC_MANAGER_BEST_PRACTICES.md) for deployment guidelines.
 
+📖 **Working Config**: See [WORKING_CONFIGURATION.md](WORKING_CONFIGURATION.md) for current production setup.
+
 📖 **Troubleshooting**: See [TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md](TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md) for port mismatch issues.
+
+📖 **Archive**: [ONPREM_HEALTH_PROXY_INSTRUCTIONS.md](ONPREM_HEALTH_PROXY_INSTRUCTIONS.md) contains proxy setup (not needed with current port 31514 solution).
 
 ## 🌍 Enterprise High Availability
 
@@ -172,18 +176,20 @@ curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 - ✅ **Use Case**: Basic connectivity testing
 - ⚠️ **Limitation**: Only checks if port is open, not app health
 
-**Production Recommendation: HTTP Monitoring (Advanced)**
+**Production Alternative: HTTP Monitoring (Advanced)**
 - 🌟 **Protocol**: HTTP on port 80 with `/health` endpoint
 - 🌟 **Benefits**: True application health detection
-- 🌟 **Implementation**: Requires NGINX health proxy (see `ONPREM_HEALTH_PROXY_INSTRUCTIONS.md`)
+- 🌟 **Implementation**: Both environments serve on port 80 (requires port standardization)
 - 🌟 **Use Case**: Production deployments requiring app-level health validation
+- ⚠️ **Note**: Our current setup uses TCP monitoring on port 31514 (simpler and working)
 
 ```powershell
-# Switch to TCP monitoring (current setup)
-.\scripts\fix-traffic-manager-tcp-monitoring.ps1
+# Current working setup (TCP monitoring on port 31514)
+# No additional configuration needed - already working!
 
-# For HTTP monitoring, deploy health proxy first:
-# Follow instructions in ONPREM_HEALTH_PROXY_INSTRUCTIONS.md
+# Alternative: Switch to HTTP monitoring on port 80
+# (Would require changing both environments to use port 80)
+# .\scripts\fix-traffic-manager-http-monitoring.ps1
 ```
 
 ### ⚠️ **IMPORTANT: Port Consistency Requirements**
