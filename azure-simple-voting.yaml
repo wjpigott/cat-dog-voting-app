@@ -43,7 +43,7 @@ spec:
                         sslmode='require'
                     )
                     cursor = conn.cursor()
-                    cursor.execute("SELECT vote_option, vote_count FROM vote_option")
+                    cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
                     rows = cursor.fetchall()
                     votes = {'cat': 0, 'dog': 0}
                     print(f"📊 Azure PostgreSQL found {len(rows)} rows:")
