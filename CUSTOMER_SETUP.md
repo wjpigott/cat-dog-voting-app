@@ -4,6 +4,22 @@
 
 This guide helps you customize the Cat vs Dog Voting App for your specific infrastructure.
 
+### ⚠️ **IMPORTANT: Port Planning**
+
+**Before deploying, plan your port strategy to avoid Traffic Manager issues:**
+
+```bash
+# Recommended: Use port 80 on both environments
+AZURE_SERVICE_PORT=80      # LoadBalancer external port
+ONPREM_SERVICE_PORT=80     # NodePort external port (e.g., 30080)
+
+# Alternative: Use same custom port on both
+AZURE_SERVICE_PORT=31514   # NodePort to match OnPrem
+ONPREM_SERVICE_PORT=31514  # Existing NodePort
+```
+
+**Traffic Manager requires identical ports on all endpoints!**
+
 ### ✅ Step 1: Configure Your Environment
 
 Copy and customize the configuration file:
@@ -22,8 +38,13 @@ Edit `config/customer.env` with your values:
 
 ```bash
 # Your on-premises Kubernetes cluster
-ONPREM_ENDPOINT="http://YOUR_ONPREM_IP:31514"
+ONPREM_ENDPOINT="http://YOUR_ONPREM_IP:31514"      # Use port 31514 (working configuration)
 ONPREM_PUBLIC_IP="YOUR_ONPREM_IP"
+ONPREM_SERVICE_PORT=31514                           # NodePort for external access
+
+# Your Azure AKS cluster  
+AZURE_ENDPOINT="http://YOUR_AZURE_IP:31514"        # Use port 31514 (matches OnPrem)
+AZURE_SERVICE_PORT=31514                            # LoadBalancer external port
 
 # Your Azure PostgreSQL server
 AZURE_POSTGRES_HOST="your-postgres-server.postgres.database.azure.com"

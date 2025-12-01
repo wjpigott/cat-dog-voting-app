@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-manager-health-proxy
+  namespace: default
+  labels:
+    app: traffic-manager-health-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-manager-health-proxy
+  template:
+    metadata:
+      labels:
+        app: traffic-manager-health-proxy
+    spec:
+      containers:
+      - name: nginx-proxy
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Create NGINX configuration for Traffic Manager health proxy
+            cat > /etc/nginx/nginx.conf << 'EOF'
+            events {
+                worker_connections 1024;
+            }
+            http {
+                # Upstream to OnPrem voting app on NodePort
+                upstream onprem_app {
+                    server 127.0.0.1:31514 max_fails=2 fail_timeout=30s;
+                }
+                
+                server {
+                    listen 80;
+                    server_name _;
+                    
+                    # Health check endpoint for Azure Traffic Manager
+                    # Traffic Manager will hit this endpoint to verify OnPrem health
+                    location /health {
+                        access_log off;
+                        
+                        # Proxy to the actual voting app to verify it's healthy
+                        proxy_pass http://onprem_app/;
+                        proxy_connect_timeout 5s;
+                        proxy_send_timeout 5s;
+                        proxy_read_timeout 5s;
+                        
+                        # Add headers for debugging
+                        add_header X-Health-Check "OnPrem-Proxy" always;
+                        add_header X-Upstream-Server $upstream_addr always;
+                        
+                        # Handle upstream failures
+                        proxy_intercept_errors on;
+                        error_page 502 503 504 =503 /health_down;
+                    }
+                    
+                    # Health check failure response
+                    location /health_down {
+                        access_log off;
+                        return 503 "OnPrem Voting App is Down";
+                        add_header Content-Type text/plain;
+                        add_header X-Health-Status "DOWN" always;
+                    }
+                    
+                    # Root path for basic verification
+                    location / {
+                        # For Traffic Manager root health check, proxy to app
+                        proxy_pass http://onprem_app/;
+                        proxy_set_header Host $host;
+                        proxy_set_header X-Real-IP $remote_addr;
+                        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                        proxy_connect_timeout 10s;
+                        proxy_send_timeout 30s;
+                        proxy_read_timeout 30s;
+                        
+                        # Add header to show this came through the health proxy
+                        add_header X-Proxied-By "TrafficManager-Health-Proxy" always;
+                    }
+                }
+            }
+            EOF
+            
+            echo "🔧 Starting Traffic Manager Health Proxy..."
+            echo "🎯 Proxying port 80 → OnPrem app port 31514"
+            echo "❤️ Health endpoint: http://66.242.207.21/health"
+            echo "🌐 Voting app: http://66.242.207.21/"
+            
+            # Start NGINX
+            nginx -g 'daemon off;'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traffic-manager-health-proxy-service
+  labels:
+    app: traffic-manager-health-proxy
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30080
+    protocol: TCP
+  selector:
+    app: traffic-manager-health-proxy
+---
+# Optional: Ingress or LoadBalancer service to expose on port 80
+apiVersion: v1
+kind: Service
+metadata:
+  name: traffic-manager-health-external
+  labels:
+    app: traffic-manager-health-proxy
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: traffic-manager-health-proxy

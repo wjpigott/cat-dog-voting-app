@@ -10,11 +10,11 @@ A production-ready cross-environment voting application deployed across Azure AK
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│           � Azure Traffic Manager (Global DNS)              │
+│           🌍 Azure Traffic Manager (Global DNS)            │
 │        (True HA - Independent of both environments)        │
-│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net   │
-│   📊 Azure Direct: http://52.154.54.110                     │
-│   🏠 OnPrem Direct: http://66.242.207.21:31514              │
+│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net:31514 │
+│   📊 Azure Direct: http://172.169.36.153:31514             │
+│   🏠 OnPrem Direct: http://66.242.207.21:31514             │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
@@ -23,7 +23,7 @@ A production-ready cross-environment voting application deployed across Azure AK
          │  🌍 Global DNS      │    │   👥 Users Access   │
          │   Load Balancing    │    │   Single URL        │
          │  30sec Health Chks  │    │  Automatic Failover │
-         │  Priority Routing   │    │                     │
+         │  TCP Port 31514     │    │  Port Consistent    │
          └─────────────────────┘    └─────────────────────┘
                    │
           ┌────────┴────────┐
@@ -46,8 +46,10 @@ A production-ready cross-environment voting application deployed across Azure AK
 ```
 
 ## 🎯 Current Status
-- **🌍 Traffic Manager**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net
-- **Azure Cloud**: 7 Cats 🐱, 4 Dogs 🐶
+- **🌍 Traffic Manager**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514
+- **Azure Cloud**: 172.169.36.153:31514 (LoadBalancer)
+- **OnPrem**: 66.242.207.21:31514 (NodePort)
+- **Monitoring**: TCP port 31514 (both endpoints)
 - **On-Premises**: 12 Cats 🐱, 8 Dogs 🐶  
 - **Combined Total**: 19 Cats 🐱, 12 Dogs 🐶
 - **Winner**: 🎉 Cats are winning!
@@ -142,6 +144,10 @@ curl http://66.242.207.21:31514/api/results  # OnPrem direct
 
 📖 **Detailed Setup**: See [CUSTOMER_SETUP.md](CUSTOMER_SETUP.md) for complete instructions.
 
+📖 **Port Planning**: See [TRAFFIC_MANAGER_BEST_PRACTICES.md](TRAFFIC_MANAGER_BEST_PRACTICES.md) for deployment guidelines.
+
+📖 **Troubleshooting**: See [TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md](TRAFFIC_MANAGER_PORT_TROUBLESHOOTING.md) for port mismatch issues.
+
 ## 🌍 Enterprise High Availability
 
 ### Traffic Manager Features
@@ -150,9 +156,62 @@ curl http://66.242.207.21:31514/api/results  # OnPrem direct
 ✅ **Priority-based Routing**: Azure primary, OnPrem backup  
 ✅ **Smart Failover**: Instant DNS-level traffic redirection  
 
+### 🏥 Health Monitoring Options
+
+**Current Setup: TCP Monitoring (Simple)**
+- ✅ **Protocol**: TCP on port 31514
+- ✅ **Benefits**: Simple, works with NodePorts directly
+- ✅ **Use Case**: Basic connectivity testing
+- ⚠️ **Limitation**: Only checks if port is open, not app health
+
+**Production Recommendation: HTTP Monitoring (Advanced)**
+- 🌟 **Protocol**: HTTP on port 80 with `/health` endpoint
+- 🌟 **Benefits**: True application health detection
+- 🌟 **Implementation**: Requires NGINX health proxy (see `ONPREM_HEALTH_PROXY_INSTRUCTIONS.md`)
+- 🌟 **Use Case**: Production deployments requiring app-level health validation
+
+```powershell
+# Switch to TCP monitoring (current setup)
+.\scripts\fix-traffic-manager-tcp-monitoring.ps1
+
+# For HTTP monitoring, deploy health proxy first:
+# Follow instructions in ONPREM_HEALTH_PROXY_INSTRUCTIONS.md
+```
+
+### ⚠️ **IMPORTANT: Port Consistency Requirements**
+
+**Traffic Manager requires both endpoints to use the same port.** If your environments use different ports, Traffic Manager will fail to route correctly.
+
+**✅ Recommended Approach (prevents issues):**
+```bash
+# When deploying K3s (OnPrem):
+kubectl expose deployment voting-app --type=NodePort --port=80 --target-port=8080 --name=voting-service
+
+# When deploying AKS (Azure):
+kubectl expose deployment voting-app --type=LoadBalancer --port=80 --target-port=8080 --name=voting-service
+
+# Result: Both use port 80 externally = Traffic Manager works perfectly
+```
+
+**🔧 Fix Existing Port Mismatches:**
+```powershell
+# If you have different ports (e.g., Azure:80, OnPrem:31514):
+.\scripts\fix-port-consistency.ps1  # Makes both use same port
+
+# Or manually standardize:
+# Option 1: Make Azure use NodePort 31514 (matches OnPrem)
+# Option 2: Make OnPrem use port 80 (matches Azure)
+```
+
+**📋 Port Planning Guidelines:**
+- **Port 80**: Standard HTTP, works with Traffic Manager HTTP monitoring
+- **Port 31514**: Common NodePort, works with Traffic Manager TCP monitoring  
+- **Consistency**: Both environments must use the same external port
+- **Router Considerations**: Avoid conflicts with router management interfaces
+
 ### Access Points
-- **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
-- **🔷 Azure Direct**: `http://52.154.54.110`  
+- **🌍 Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
+- **🔷 Azure Direct**: `http://172.169.36.153:31514`  
 - **🏠 OnPrem Direct**: `http://66.242.207.21:31514`
 
 ### Failover Testing
