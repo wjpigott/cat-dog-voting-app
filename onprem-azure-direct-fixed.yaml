@@ -32,6 +32,14 @@ spec:
           value: "votinguser"
         - name: DB_PASSWORD
           value: "secure_password_123"
+        - name: AZURE_POSTGRES_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: AZURE_POSTGRES_USER
+          value: "votinguser"
+        - name: AZURE_POSTGRES_PASSWORD
+          value: "SecureVotingPassword123!"
+        - name: AZURE_POSTGRES_DB
+          value: "postgres"
         resources:
           requests:
             memory: "128Mi"
@@ -101,10 +109,10 @@ spec:
                 try:
                     print("🔗 Connecting to Azure PostgreSQL...")
                     azure_conn = psycopg2.connect(
-                        host="postgres-cat-dog-voting.postgres.database.azure.com",
-                        database="postgres",
-                        user="votinguser",
-                        password="SecureVotingPassword123!",
+                        host=os.getenv('AZURE_POSTGRES_HOST', 'postgres-cat-dog-voting.postgres.database.azure.com'),
+                        database=os.getenv('AZURE_POSTGRES_DB', 'postgres'),
+                        user=os.getenv('AZURE_POSTGRES_USER', 'votinguser'),
+                        password=os.getenv('AZURE_POSTGRES_PASSWORD', 'SecureVotingPassword123!'),
                         port=5432,
                         sslmode='require'
                     )

@@ -39,36 +39,50 @@ A production-ready cross-environment voting application deployed across Azure AK
 - **Combined Total**: 16 Cats 🐱, 9 Dogs 🐶
 - **Winner**: 🎉 Cats are winning!
 
-## 🚀 Final Working Deployment
+## 🚀 Quick Start for Your Environment
 
-### Live Services
-- **Azure Main UI**: http://52.154.54.110 - Complete voting interface with cross-environment data
-- **OnPrem UI**: http://66.242.207.21:31514 - Identical interface showing combined vote totals
-- **API Endpoints**: Both environments support `/api/results`, `/vote`, `/health`
+### 🔧 Step 1: Configure Your Infrastructure
 
-### Key Achievements
-✅ **Cross-Environment Data Integration**: Both deployments query each other's databases  
-✅ **Database Connectivity**: Stable Azure PostgreSQL and on-premises connections  
-✅ **Load Balancer Configuration**: Main Azure LB routing to complete application  
-✅ **UI/UX Parity**: Identical modern interfaces with working vote buttons  
-✅ **Data Accuracy**: Real-time vote counts (Azure: 4🐱,3🐶 + OnPrem: 12🐱,6🐶)  
+**Important**: The app needs to be configured for your specific infrastructure.
 
-### Quick Test Commands
 ```bash
-# Test Azure environment
-curl http://52.154.54.110/api/results
+# 1. Copy the configuration template
+cp config/customer.env.template config/customer.env
 
-# Test on-premises environment
-curl http://66.242.207.21:31514/api/results
-
-# Expected response format:
-{
-  "azure_votes": {"cat": 4, "dog": 3},
-  "onprem_votes": {"cat": 12, "dog": 6},
-  "total_votes": 25,
-  "votes": {"cat": 16, "dog": 9}
-}
+# 2. Edit with your specific values
+nano config/customer.env
 ```
+
+**Required Configuration:**
+```bash
+# Your on-premises cluster IP
+ONPREM_ENDPOINT="http://YOUR_ONPREM_IP:31514"
+
+# Your Azure PostgreSQL server  
+AZURE_POSTGRES_HOST="your-server.postgres.database.azure.com"
+AZURE_POSTGRES_USER="your-username"
+AZURE_POSTGRES_PASSWORD="your-password"
+```
+
+### 🚀 Step 2: Deploy
+
+```bash
+# Deploy Azure environment (uses your config)
+./scripts/deploy-azure.sh
+
+# Deploy on-premises environment (uses your config)  
+./scripts/deploy-onprem.sh
+
+# Verify both environments work
+./scripts/verify-environments.sh
+```
+
+### ✅ Step 3: Access Your Apps
+
+- **Azure**: `http://YOUR_AZURE_LB_IP` (shown after deployment)
+- **OnPrem**: `http://YOUR_ONPREM_IP:31514`
+
+📖 **Detailed Setup**: See [CUSTOMER_SETUP.md](CUSTOMER_SETUP.md) for complete instructions.
 
 ## 🚀 Getting Started
 

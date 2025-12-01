@@ -19,6 +19,17 @@ spec:
         image: python:3.9-slim
         ports:
         - containerPort: 5000
+        env:
+        - name: AZURE_POSTGRES_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: AZURE_POSTGRES_USER
+          value: "votinguser"
+        - name: AZURE_POSTGRES_PASSWORD
+          value: "SecureVotingPassword123!"
+        - name: AZURE_POSTGRES_DB
+          value: "postgres"
+        - name: ONPREM_ENDPOINT
+          value: "http://66.242.207.21:31514"
         command: ["/bin/bash", "-c"]
         args:
           - |
@@ -31,17 +42,25 @@ spec:
             import psycopg2
             import requests
             import json
+            import os
             
             app = Flask(__name__)
+            
+            # Configuration from environment variables
+            AZURE_POSTGRES_HOST = os.getenv('AZURE_POSTGRES_HOST', 'postgres-cat-dog-voting.postgres.database.azure.com')
+            AZURE_POSTGRES_USER = os.getenv('AZURE_POSTGRES_USER', 'votinguser')
+            AZURE_POSTGRES_PASSWORD = os.getenv('AZURE_POSTGRES_PASSWORD', 'SecureVotingPassword123!')
+            AZURE_POSTGRES_DB = os.getenv('AZURE_POSTGRES_DB', 'postgres')
+            ONPREM_ENDPOINT = os.getenv('ONPREM_ENDPOINT', 'http://66.242.207.21:31514')
             
             def get_azure_votes():
                 try:
                     conn = psycopg2.connect(
-                        host='postgres-cat-dog-voting.postgres.database.azure.com',
+                        host=AZURE_POSTGRES_HOST,
                         port=5432,
-                        database='postgres',
-                        user='votinguser',
-                        password='SecureVotingPassword123!',
+                        database=AZURE_POSTGRES_DB,
+                        user=AZURE_POSTGRES_USER,
+                        password=AZURE_POSTGRES_PASSWORD,
                         sslmode='require'
                     )
                     cursor = conn.cursor()
@@ -65,22 +84,22 @@ spec:
             
             def get_onprem_votes():
                 try:
-                    response = requests.get('http://66.242.207.21:31514/api/results', timeout=5)
+                    response = requests.get(f'{ONPREM_ENDPOINT}/api/results', timeout=5)
                     if response.status_code == 200:
                         data = response.json()
                         return data.get('onprem_votes', {'cat': 0, 'dog': 0})
                 except Exception as e:
-                    print(f"Error fetching on-prem votes: {e}")
+                    print(f"Error fetching on-prem votes from {ONPREM_ENDPOINT}: {e}")
                 return {'cat': 0, 'dog': 0}
             
             def cast_azure_vote(vote_type):
                 try:
                     conn = psycopg2.connect(
-                        host='postgres-cat-dog-voting.postgres.database.azure.com',
+                        host=AZURE_POSTGRES_HOST,
                         port=5432,
-                        database='postgres',
-                        user='votinguser',
-                        password='SecureVotingPassword123!',
+                        database=AZURE_POSTGRES_DB,
+                        user=AZURE_POSTGRES_USER,
+                        password=AZURE_POSTGRES_PASSWORD,
                         sslmode='require'
                     )
                     cursor = conn.cursor()
