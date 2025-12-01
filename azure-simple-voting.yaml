@@ -38,8 +38,8 @@ spec:
                         host='postgres-cat-dog-voting.postgres.database.azure.com',
                         port=5432,
                         database='postgres',
-                        user='adminuser',
-                        password='ComplexPassword123!',
+                        user='votinguser',
+                        password='SecureVotingPassword123!',
                         sslmode='require'
                     )
                     cursor = conn.cursor()
