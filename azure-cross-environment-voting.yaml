@@ -19,8 +19,9 @@ spec:
         image: python:3.9-slim
         ports:
         - containerPort: 5000
-        command: ["/bin/bash", "-c"]
-        args:
+        command: 
+          - "/bin/bash"
+          - "-c"
           - |
             echo "🚀 Installing dependencies for Azure cross-environment voting..."
             pip install flask psycopg2-binary requests
