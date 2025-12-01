@@ -11,10 +11,10 @@ A production-ready cross-environment voting application deployed across Azure AK
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │           � Azure Traffic Manager (Global DNS)              │
-│        (True HA - Independent of both environments)        │
+│        (True HA - Independent of both environments)          │
 │   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net   │
 │   📊 Azure Direct: http://52.154.54.110                     │
-│   🏠 OnPrem Direct: http://66.242.207.21:31514              │
+│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514              │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
@@ -80,7 +80,7 @@ This project now uses **Azure Traffic Manager** for true enterprise-grade high a
 ```
 🌍 Global DNS (Traffic Manager)
 ├── Priority 1: Azure AKS (52.154.54.110) 
-└── Priority 2: OnPrem K3s (66.242.207.21:31514)
+└── Priority 2: OnPrem K3s (xx.xx.xx.xx:31514)
 ```
 
 ## Example Voting page
