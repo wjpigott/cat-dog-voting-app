@@ -15,7 +15,7 @@ A production-ready cross-environment voting application deployed across Azure AK
 │        (True HA - Independent of both environments)        │
 │   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net:31514 │
 │   📊 Azure Direct: http://172.169.36.153:31514             │
-│   🏠 OnPrem Direct: http://66.242.207.21:31514             │
+│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514             │
 =======
 │           � Azure Traffic Manager (Global DNS)              │
 │        (True HA - Independent of both environments)          │
@@ -56,7 +56,7 @@ A production-ready cross-environment voting application deployed across Azure AK
 ## 🎯 Current Status
 - **🌍 Traffic Manager**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514
 - **Azure Cloud**: 172.169.36.153:31514 (LoadBalancer)
-- **OnPrem**: 66.242.207.21:31514 (NodePort)
+- **OnPrem**: xx.xx.xx.xx:31514 (NodePort)
 - **Monitoring**: TCP port 31514 (both endpoints)
 - **On-Premises**: 12 Cats 🐱, 8 Dogs 🐶  
 - **Combined Total**: 19 Cats 🐱, 12 Dogs 🐶
@@ -221,7 +221,7 @@ kubectl expose deployment voting-app --type=LoadBalancer --port=80 --target-port
 <<<<<<< HEAD
 - **🌍 Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
 - **🔷 Azure Direct**: `http://172.169.36.153:31514`  
-- **🏠 OnPrem Direct**: `http://66.242.207.21:31514`
+- **🏠 OnPrem Direct**: `http://xx.xx.xx.xx:31514`
 =======
 - **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
 - **🔷 Azure Direct**: `http://52.154.54.110`  
