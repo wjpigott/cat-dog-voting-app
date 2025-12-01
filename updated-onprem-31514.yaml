@@ -1,0 +1,386 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_NAME
+          value: "voting"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres123"
+        - name: AZURE_DB_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: AZURE_DB_NAME
+          value: "voting_app"
+        - name: AZURE_DB_USER
+          value: "votinguser"
+        - name: AZURE_DB_PASSWORD
+          value: "SecureVotingPassword123!"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"  
+            cpu: "500m"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, render_template, request, jsonify
+            import psycopg2
+            import os
+            import logging
+            from datetime import datetime
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_local_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['DB_HOST'],
+                        database=os.environ['DB_NAME'],
+                        user=os.environ['DB_USER'],
+                        password=os.environ['DB_PASSWORD']
+                    )
+                except Exception as e:
+                    logger.error(f"Local DB connection error: {e}")
+                    return None
+
+            def get_azure_db_connection():
+                try:
+                    return psycopg2.connect(
+                        host=os.environ['AZURE_DB_HOST'],
+                        database=os.environ['AZURE_DB_NAME'],
+                        user=os.environ['AZURE_DB_USER'],
+                        password=os.environ['AZURE_DB_PASSWORD'],
+                        port=5432,
+                        sslmode='require'
+                    )
+                except Exception as e:
+                    logger.error(f"Azure DB connection error: {e}")
+                    return None
+
+            def get_azure_votes_direct():
+                """Get Azure votes directly from Azure PostgreSQL database"""
+                conn = get_azure_db_connection()
+                votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            # Try different column names used in Azure
+                            try:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            except:
+                                try:
+                                    cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                                except:
+                                    cursor.execute("SELECT option_name, COUNT(*) FROM votes GROUP BY option_name")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type and vote_type.lower() in ['cat', 'cats']:
+                                    votes['cat'] = count
+                                elif vote_type and vote_type.lower() in ['dog', 'dogs']:
+                                    votes['dog'] = count
+                        conn.close()
+                        logger.info(f"✅ Direct Azure DB votes: {votes}")
+                    except Exception as e:
+                        logger.error(f"Azure DB query error: {e}")
+
+                return votes
+
+            @app.route('/api/results')
+            def get_results():
+                # Get local votes
+                conn = get_local_db_connection()
+                local_votes = {'cat': 0, 'dog': 0}
+                
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice")
+                            except:
+                                cursor.execute("SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option")
+                            
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type.lower() in ['cat', 'cats']:
+                                    local_votes['cat'] = count
+                                elif vote_type.lower() in ['dog', 'dogs']:
+                                    local_votes['dog'] = count
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Local DB error: {e}")
+
+                # Get Azure votes directly from Azure database (bypassing API)
+                azure_votes = get_azure_votes_direct()
+                
+                # Calculate totals and percentages
+                cat_total = azure_votes['cat'] + local_votes['cat']
+                dog_total = azure_votes['dog'] + local_votes['dog']
+                grand_total = cat_total + dog_total
+                
+                cat_percentage = (cat_total / grand_total * 100) if grand_total > 0 else 0
+                dog_percentage = (dog_total / grand_total * 100) if grand_total > 0 else 0
+                
+                return jsonify({
+                    "environment": "onprem",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "votes": {
+                        "cat": {
+                            "azure": azure_votes['cat'],
+                            "onprem": local_votes['cat'],
+                            "total": cat_total,
+                            "percentage": round(cat_percentage, 2)
+                        },
+                        "dog": {
+                            "azure": azure_votes['dog'],
+                            "onprem": local_votes['dog'],
+                            "total": dog_total,
+                            "percentage": round(dog_percentage, 2)
+                        }
+                    },
+                    "method": "direct_azure_database",
+                    "note": "Using direct Azure PostgreSQL connection for accurate data"
+                })
+
+            @app.route('/health')
+            def health():
+                return jsonify({
+                    'status': 'healthy', 
+                    'mode': 'direct-azure-db',
+                    'azure_db_host': os.environ.get('AZURE_DB_HOST')
+                })
+
+            @app.route('/vote', methods=['POST'])
+            def vote():
+                """Handle voting"""
+                vote_data = request.get_json()
+                if not vote_data or 'vote' not in vote_data:
+                    return jsonify({'error': 'Invalid vote data'}), 400
+                
+                vote_choice = vote_data['vote'].lower()
+                if vote_choice not in ['cat', 'dog']:
+                    return jsonify({'error': 'Invalid vote choice'}), 400
+                
+                conn = get_local_db_connection()
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("INSERT INTO votes (vote_choice) VALUES (%s)", (vote_choice,))
+                            except:
+                                cursor.execute("INSERT INTO votes (vote_option) VALUES (%s)", (vote_choice,))
+                        conn.commit()
+                        conn.close()
+                        return jsonify({'success': True, 'vote': vote_choice})
+                    except Exception as e:
+                        logger.error(f"Vote insert error: {e}")
+                        return jsonify({'error': str(e)}), 500
+                
+                return jsonify({'error': 'Database connection failed'}), 500
+
+            @app.route('/')
+            def index():
+                return '''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>🐱🐶 Cross-Environment Voting App</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                            text-align: center;
+                            background: linear-gradient(135deg, #2e8b57 0%, #90ee90 100%);
+                            padding: 50px;
+                            margin: 0;
+                            min-height: 100vh;
+                            color: white;
+                        }
+                        .container { 
+                            max-width: 700px; 
+                            margin: 0 auto; 
+                            background: rgba(255,255,255,0.1); 
+                            padding: 40px; 
+                            border-radius: 20px; 
+                            backdrop-filter: blur(10px); 
+                        }
+                        .vote-button {
+                            font-size: 24px;
+                            padding: 20px 40px;
+                            margin: 15px;
+                            border: none;
+                            border-radius: 50px;
+                            cursor: pointer;
+                            transition: all 0.3s ease;
+                            font-weight: bold;
+                            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                            min-width: 250px;
+                        }
+                        .vote-button:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+                        .cat-button { background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; }
+                        .dog-button { background: linear-gradient(45deg, #4ecdc4, #44a08d); color: white; }
+                        .results { 
+                            margin-top: 40px; 
+                            font-size: 18px; 
+                            background: rgba(255,255,255,0.1); 
+                            padding: 30px; 
+                            border-radius: 15px; 
+                            text-align: left;
+                        }
+                        .success { 
+                            background: rgba(46, 139, 87, 0.3); 
+                            padding: 15px; 
+                            margin: 20px 0; 
+                            border-radius: 10px; 
+                            border-left: 4px solid #2e8b57; 
+                        }
+                        h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+                        h2 { font-size: 1.2em; margin-bottom: 30px; opacity: 0.9; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🐱🐶 Cross-Environment Voting App</h1>
+                        <h2>🔗 Direct Azure Database Integration</h2>
+                        
+                        <div class="success">
+                            <h3>✅ Fixed Azure Data Accuracy</h3>
+                            <p><strong>Now using direct Azure PostgreSQL connection!</strong></p>
+                            <p>Bypassing API issues for real-time accurate vote data.</p>
+                        </div>
+                        
+                        <button class="vote-button cat-button" onclick="vote('cat')">
+                            🐱 Vote for Cats!
+                        </button>
+
+                        <button class="vote-button dog-button" onclick="vote('dog')">
+                            🐶 Vote for Dogs!
+                        </button>
+
+                        <div class="results" id="results">
+                            <p>🔄 Loading results...</p>
+                        </div>
+                    </div>
+
+                    <script>
+                    function vote(animal) {
+                        fetch('/vote', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({vote: animal})
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                showNotification(`Thanks for voting for ${animal}!`, animal === 'cat' ? '#ff6b6b' : '#4ecdc4');
+                                loadResults();
+                            }
+                        })
+                        .catch(error => console.error('Error:', error));
+                    }
+
+                    function loadResults() {
+                        fetch('/api/results')
+                            .then(response => response.json())
+                            .then(data => {
+                                const votes = data.votes;
+                                document.getElementById('results').innerHTML = `
+                                    <h3>🏆 Live Cross-Environment Results</h3>
+                                    <div style="display: flex; justify-content: space-around; margin: 20px 0;">
+                                        <div style="background: rgba(255,107,107,0.3); padding: 20px; border-radius: 10px; flex: 1; margin: 0 10px; text-align: center;">
+                                            <div style="font-size: 48px;">🐱</div>
+                                            <div style="font-size: 28px; font-weight: bold;">${votes.cat.total}</div>
+                                            <div style="font-size: 16px;">${votes.cat.percentage}%</div>
+                                            <div style="font-size: 14px; margin-top: 10px;">Azure: ${votes.cat.azure} | OnPrem: ${votes.cat.onprem}</div>
+                                        </div>
+                                        <div style="background: rgba(78,205,196,0.3); padding: 20px; border-radius: 10px; flex: 1; margin: 0 10px; text-align: center;">
+                                            <div style="font-size: 48px;">🐶</div>
+                                            <div style="font-size: 28px; font-weight: bold;">${votes.dog.total}</div>
+                                            <div style="font-size: 16px;">${votes.dog.percentage}%</div>
+                                            <div style="font-size: 14px; margin-top: 10px;">Azure: ${votes.dog.azure} | OnPrem: ${votes.dog.onprem}</div>
+                                        </div>
+                                    </div>
+                                    <div style="text-align: center; margin-top: 20px;">
+                                        <p><strong>🎉 Total Votes: ${votes.cat.total + votes.dog.total}</strong></p>
+                                        <p style="font-size: 14px; opacity: 0.8;"><em>${data.note}</em></p>
+                                        <p style="font-size: 12px; opacity: 0.6;">Last updated: ${new Date(data.timestamp).toLocaleString()}</p>
+                                    </div>
+                                `;
+                            })
+                            .catch(error => {
+                                document.getElementById('results').innerHTML = '<p>Error loading results</p>';
+                                console.error('Error:', error);
+                            });
+                    }
+
+                    function showNotification(message, color) {
+                        const notification = document.createElement('div');
+                        notification.style.cssText = `
+                            position: fixed; top: 20px; right: 20px;
+                            background: ${color}; color: white;
+                            padding: 15px 20px; border-radius: 10px;
+                            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                            z-index: 1000; font-weight: bold;
+                            transform: translateX(400px);
+                            transition: transform 0.3s ease;
+                        `;
+                        notification.textContent = message;
+                        document.body.appendChild(notification);
+
+                        setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+                        setTimeout(() => notification.style.transform = 'translateX(400px)', 2500);
+                        setTimeout(() => document.body.removeChild(notification), 3000);
+                    }
+
+                    // Load results on page load and refresh every 30 seconds
+                    loadResults();
+                    setInterval(loadResults, 30000);
+                    </script>
+                </body>
+                </html>
+                '''
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=5000, debug=True)
+            EOF
+            
+            python /app.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-service
+spec:
+  selector:
+    app: voting-app-azure
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 31514
+  type: NodePort
