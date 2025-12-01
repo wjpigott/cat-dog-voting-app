@@ -10,11 +10,19 @@ A production-ready cross-environment voting application deployed across Azure AK
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+<<<<<<< HEAD
 │           🌍 Azure Traffic Manager (Global DNS)            │
 │        (True HA - Independent of both environments)        │
 │   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net:31514 │
 │   📊 Azure Direct: http://172.169.36.153:31514             │
 │   🏠 OnPrem Direct: http://66.242.207.21:31514             │
+=======
+│           � Azure Traffic Manager (Global DNS)              │
+│        (True HA - Independent of both environments)          │
+│   🎯 HA URL: http://voting-app-tm-XXXX.trafficmanager.net   │
+│   📊 Azure Direct: http://52.154.54.110                     │
+│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514              │
+>>>>>>> 05685f60bd726295a77d5067ad8eb44ebc974a87
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
@@ -82,7 +90,7 @@ This project now uses **Azure Traffic Manager** for true enterprise-grade high a
 ```
 🌍 Global DNS (Traffic Manager)
 ├── Priority 1: Azure AKS (52.154.54.110) 
-└── Priority 2: OnPrem K3s (66.242.207.21:31514)
+└── Priority 2: OnPrem K3s (xx.xx.xx.xx:31514)
 ```
 
 ## Example Voting page
@@ -139,7 +147,7 @@ curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net/api/results
 
 # Test individual environments
 curl http://52.154.54.110/api/results      # Azure direct
-curl http://66.242.207.21:31514/api/results  # OnPrem direct
+curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 ```
 
 📖 **Detailed Setup**: See [CUSTOMER_SETUP.md](CUSTOMER_SETUP.md) for complete instructions.
@@ -210,9 +218,15 @@ kubectl expose deployment voting-app --type=LoadBalancer --port=80 --target-port
 - **Router Considerations**: Avoid conflicts with router management interfaces
 
 ### Access Points
+<<<<<<< HEAD
 - **🌍 Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
 - **🔷 Azure Direct**: `http://172.169.36.153:31514`  
 - **🏠 OnPrem Direct**: `http://66.242.207.21:31514`
+=======
+- **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
+- **🔷 Azure Direct**: `http://52.154.54.110`  
+- **🏠 OnPrem Direct**: `http://xx.xx.xx.xx:31514`
+>>>>>>> 05685f60bd726295a77d5067ad8eb44ebc974a87
 
 ### Failover Testing
 ```bash
