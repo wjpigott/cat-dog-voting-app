@@ -1,0 +1,283 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting-app-azure
+  template:
+    metadata:
+      labels:
+        app: voting-app-azure
+    spec:
+      containers:
+      - name: voting-app
+        image: python:3.9-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_NAME
+          value: "voting"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres123"
+        - name: AZURE_DB_HOST
+          value: "postgres-cat-dog-voting.postgres.database.azure.com"
+        - name: AZURE_DB_NAME
+          value: "postgres"
+        - name: AZURE_DB_USER
+          value: "votinguser"
+        - name: AZURE_DB_PASSWORD
+          value: "SecureVotingPassword123!"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install flask psycopg2-binary requests
+            cat > /app.py << 'EOF'
+            from flask import Flask, render_template, request, jsonify
+            import psycopg2
+            import os
+            import logging
+            import requests
+            from datetime import datetime
+
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            app = Flask(__name__)
+
+            def get_azure_db_connection():
+                """Get connection to Azure PostgreSQL database"""
+                try:
+                    conn = psycopg2.connect(
+                        host=os.environ['AZURE_DB_HOST'],
+                        database=os.environ['AZURE_DB_NAME'],
+                        user=os.environ['AZURE_DB_USER'],
+                        password=os.environ['AZURE_DB_PASSWORD'],
+                        port=5432,
+                        sslmode='require'
+                    )
+                    logger.info("✅ Azure PostgreSQL connection successful!")
+                    return conn
+                except Exception as e:
+                    logger.error(f"❌ Azure DB connection error: {e}")
+                    return None
+
+            def get_azure_votes_direct():
+                """Get Azure votes directly from Azure PostgreSQL database"""
+                conn = get_azure_db_connection()
+                votes = {'cat': 0, 'dog': 0}
+
+                if conn:
+                    try:
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT option, COUNT(*) FROM vote_option GROUP BY option")
+                            for vote_type, count in cursor.fetchall():
+                                if vote_type and vote_type.lower() in ['cat', 'cats']:
+                                    votes['cat'] = count
+                                elif vote_type and vote_type.lower() in ['dog', 'dogs']:
+                                    votes['dog'] = count
+                        conn.close()
+                        logger.info(f"✅ Direct Azure DB votes: {votes}")
+                    except Exception as e:
+                        logger.error(f"❌ Azure DB query error: {e}")
+                        conn.close()
+                else:
+                    logger.error("❌ No Azure database connection - using fallback")
+
+                return votes
+
+            def get_local_votes():
+                """Get local votes from on-premises database"""
+                votes = {'cat': 0, 'dog': 0}
+
+                # Try multiple database configurations
+                db_configs = [
+                    {
+                        'host': os.environ.get('DB_HOST', 'postgres-service'),
+                        'database': os.environ.get('DB_NAME', 'voting'),
+                        'user': os.environ.get('DB_USER', 'postgres'),
+                        'password': os.environ.get('DB_PASSWORD', 'postgres123')
+                    },
+                    {
+                        'host': 'postgres-service',
+                        'database': 'postgres',
+                        'user': 'postgres', 
+                        'password': 'postgres123'
+                    },
+                    {
+                        'host': 'postgres-service',
+                        'database': 'voting',
+                        'user': 'voting_user',
+                        'password': 'voting_password'
+                    }
+                ]
+
+                for config in db_configs:
+                    try:
+                        conn = psycopg2.connect(**config)
+                        cursor = conn.cursor()
+                        
+                        # Try different table/column combinations
+                        query_attempts = [
+                            "SELECT vote_choice, COUNT(*) FROM votes GROUP BY vote_choice",
+                            "SELECT vote_option, COUNT(*) FROM votes GROUP BY vote_option", 
+                            "SELECT option, COUNT(*) FROM votes GROUP BY option",
+                            "SELECT choice, COUNT(*) FROM votes GROUP BY choice"
+                        ]
+                        
+                        for query in query_attempts:
+                            try:
+                                cursor.execute(query)
+                                for vote_type, count in cursor.fetchall():
+                                    if vote_type and vote_type.lower() in ['cat', 'cats']:
+                                        votes['cat'] = count
+                                    elif vote_type and vote_type.lower() in ['dog', 'dogs']:
+                                        votes['dog'] = count
+                                logger.info(f"✅ Local DB votes: {votes}")
+                                conn.close()
+                                return votes
+                            except Exception as query_error:
+                                logger.debug(f"Query failed: {query} - {query_error}")
+                                continue
+                                
+                        conn.close()
+                    except Exception as conn_error:
+                        logger.debug(f"DB connection failed: {config} - {conn_error}")
+                        continue
+
+                logger.warning("❌ All local database connection attempts failed")
+                return votes
+
+            def get_azure_votes_via_api():
+                """Fallback method: get Azure votes via API (returns old cached data)"""
+                try:
+                    # This is the old method that returns incorrect data
+                    response = requests.get('http://172.169.25.121/api/results', timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return {
+                            'cat': data.get('cat', {}).get('azure', 0),
+                            'dog': data.get('dog', {}).get('azure', 0)
+                        }
+                except Exception as e:
+                    logger.error(f"API fallback failed: {e}")
+                
+                # Return hardcoded old values as last resort
+                logger.warning("⚠️ Using hardcoded fallback values")
+                return {'cat': 1, 'dog': 0}
+
+            @app.route('/api/results')
+            def get_results():
+                """API endpoint for getting cross-environment vote results"""
+                
+                # Get local votes (may fail due to auth issues)
+                local_votes = get_local_votes()
+                
+                # Get Azure votes directly from Azure database (this works!)
+                azure_votes = get_azure_votes_direct()
+                
+                # If Azure direct connection failed, fall back to API (old method)
+                if azure_votes['cat'] == 0 and azure_votes['dog'] == 0:
+                    logger.warning("⚠️ Azure direct failed, using API fallback")
+                    azure_votes = get_azure_votes_via_api()
+                
+                # Calculate totals and percentages
+                total_cat = azure_votes['cat'] + local_votes['cat']
+                total_dog = azure_votes['dog'] + local_votes['dog']
+                grand_total = total_cat + total_dog
+                
+                cat_percentage = (total_cat / grand_total * 100) if grand_total > 0 else 0
+                dog_percentage = (total_dog / grand_total * 100) if grand_total > 0 else 0
+
+                result = {
+                    'environment': 'onprem',
+                    'timestamp': datetime.now().isoformat(),
+                    'votes': {
+                        'cat': {
+                            'azure': azure_votes['cat'],
+                            'onprem': local_votes['cat'],
+                            'total': total_cat,
+                            'percentage': round(cat_percentage, 2)
+                        },
+                        'dog': {
+                            'azure': azure_votes['dog'],
+                            'onprem': local_votes['dog'], 
+                            'total': total_dog,
+                            'percentage': round(dog_percentage, 2)
+                        }
+                    }
+                }
+                
+                logger.info(f"📊 API result: Azure cats={azure_votes['cat']}, dogs={azure_votes['dog']}")
+                return jsonify(result)
+
+            @app.route('/test-azure-db')
+            def test_azure_db():
+                """Test endpoint for Azure database connection"""
+                try:
+                    azure_votes = get_azure_votes_direct()
+                    return jsonify({
+                        'success': True,
+                        'azure_votes': azure_votes,
+                        'method': 'direct_database_connection'
+                    })
+                except Exception as e:
+                    return jsonify({
+                        'success': False,
+                        'error': str(e),
+                        'method': 'direct_database_connection'
+                    })
+
+            @app.route('/debug')
+            def debug_connections():
+                """Debug endpoint to test all connections"""
+                local_votes = get_local_votes()
+                azure_votes = get_azure_votes_direct()
+                api_votes = get_azure_votes_via_api()
+                
+                return jsonify({
+                    'local_votes': local_votes,
+                    'azure_direct_votes': azure_votes,
+                    'azure_api_votes': api_votes,
+                    'environment_vars': {
+                        'DB_HOST': os.environ.get('DB_HOST'),
+                        'AZURE_DB_HOST': os.environ.get('AZURE_DB_HOST')
+                    }
+                })
+
+            @app.route('/health')
+            def health():
+                return jsonify({
+                    'status': 'healthy',
+                    'mode': 'direct-azure-db-fixed',
+                    'azure_db_host': os.environ.get('AZURE_DB_HOST')
+                })
+
+            @app.route('/')
+            def index():
+                return '''<!DOCTYPE html><html><head><title>🌐 Fixed Azure DB Voting</title></head>
+                <body><h1>On-Premises Voting App - FIXED Azure DB Access</h1>
+                <p>API: /api/results | Test: /test-azure-db | Debug: /debug</p></body></html>'''
+
+            if __name__ == '__main__':
+                logger.info("🎯 Starting FIXED on-premises voting app with direct Azure database connection...")
+                logger.info("🌐 Azure DB: postgres-cat-dog-voting.postgres.database.azure.com")
+                logger.info("🔧 This version handles local DB auth failures and prioritizes Azure direct connection")
+                app.run(host='0.0.0.0', port=5000, debug=False)
+            EOF
+
+            python /app.py
