@@ -723,12 +723,30 @@ kubectl get hpa
 
 ## 🔄 CI/CD Pipeline Features
 
+**💰 Cost-Saving Note**: All workflows are **manual-trigger only** to prevent automatic Azure resource consumption when environments are shut down to save costs.
+
 - **Multi-environment deployment**: Parallel deployment to on-premises and Azure
 - **Container image building**: Automatic Docker image creation and registry push
 - **Load balancing setup**: Azure Traffic Manager configuration
-- **Automated testing**: Load testing with performance reports
-- **Failover simulation**: Automated failover testing
+- **Manual testing**: Load testing with performance reports (run on-demand)
+- **Failover simulation**: Manual failover testing capability
 - **Rollback capability**: Kubernetes rollout history and rollback
+
+### 🚀 Running Workflows Manually
+
+```bash
+# Deploy full multi-environment setup
+gh workflow run deploy-multi-env.yml
+
+# Deploy only PostgreSQL database  
+gh workflow run deploy-postgres.yml
+
+# Deploy to single environment
+gh workflow run deploy-single-env.yml -f environment=azure
+gh workflow run deploy-single-env.yml -f environment=onprem
+```
+
+Or use the GitHub Actions web interface: **Actions tab → Select workflow → Run workflow**
 
 ## 📝 License
 
