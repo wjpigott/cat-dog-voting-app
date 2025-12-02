@@ -1,12 +1,15 @@
 name: Deploy Azure PostgreSQL Database
 
-on:
-  workflow_dispatch:
-    inputs:
-      database_name:
-        description: 'PostgreSQL server name'
-        required: false
-        default: 'postgres-cat-dog-voting'
+# TEMPORARILY DISABLED TO STOP ALL AUTOMATIC RUNS
+# Re-enable by uncommenting the 'on' section when needed
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       database_name:
+#         description: 'PostgreSQL server name'
+#         required: false
+#         default: 'postgres-cat-dog-voting'
 
 jobs:
   deploy-postgres:
