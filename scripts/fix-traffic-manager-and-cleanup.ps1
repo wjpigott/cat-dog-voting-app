@@ -7,9 +7,17 @@
 param(
     [string]$ResourceGroup = "rg-cat-dog-voting",
     [string]$TrafficManagerProfile = "voting-app-tm-2334-cstgesqvnzeko",
-    [string]$OnPremIP = "66.242.207.21",
+    [string]$OnPremIP = $env:ONPREM_PUBLIC_IP,  # Set via environment variable
     [switch]$DryRun
 )
+
+# Validate OnPrem IP
+if ([string]::IsNullOrEmpty($OnPremIP)) {
+    Write-Host "❌ ERROR: ONPREM_PUBLIC_IP environment variable not set!" -ForegroundColor Red
+    Write-Host "   Please set it first: `$env:ONPREM_PUBLIC_IP = `"YOUR_ONPREM_IP`"" -ForegroundColor Yellow
+    Write-Host "   Or see ENV_CONFIG.md for details" -ForegroundColor Yellow
+    exit 1
+}
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "🔧 TRAFFIC MANAGER FIX & CLEANUP SCRIPT" -ForegroundColor Green
@@ -28,7 +36,7 @@ Write-Host "Current situation:" -ForegroundColor Cyan
 Write-Host "  ✅ 172.168.91.225:80  - azure-voting-app-complete-service (BETTER VERSION)" -ForegroundColor Green
 Write-Host "  ❌ 172.168.251.177:80 - voting-load-balancer-service (OLD - SHOULD DELETE)" -ForegroundColor Red
 Write-Host "  ⚠️  172.169.36.153:31514 - voting-app-31514-lb (For Traffic Manager)" -ForegroundColor Yellow
-Write-Host "  🏠 66.242.207.21:31514 - OnPrem (Current)" -ForegroundColor Cyan
+Write-Host "  🏠 $OnPremIP`:31514 - OnPrem (Current)" -ForegroundColor Cyan
 Write-Host ""
 
 # Step 2: Test current endpoints

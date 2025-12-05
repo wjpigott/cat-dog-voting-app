@@ -13,7 +13,7 @@ Write-Host ""
 
 Write-Host "This will configure Traffic Manager to use:" -ForegroundColor Yellow
 Write-Host "  ✅ Azure: 172.168.91.225:80 (WORKING)" -ForegroundColor Green
-Write-Host "  ⚠️  OnPrem: 66.242.207.21:80 (YOU NEED TO CHANGE THIS)" -ForegroundColor Yellow
+Write-Host "  ⚠️  OnPrem: YOUR_ONPREM_IP:80 (YOU NEED TO CHANGE THIS)" -ForegroundColor Yellow
 Write-Host ""
 
 Write-Host "⚠️ WARNING: You need to change your OnPrem to port 80 first!" -ForegroundColor Red
@@ -81,8 +81,8 @@ foreach ($endpoint in $profile.Endpoints) {
     elseif ($endpoint.Name -like "*onprem*") {
         Write-Host "   Updating OnPrem endpoint: $($endpoint.Name)" -ForegroundColor Cyan
         Write-Host "     Old: $($endpoint.Target)" -ForegroundColor Gray
-        $endpoint.Target = "66.242.207.21"
-        Write-Host "     New: 66.242.207.21" -ForegroundColor Green
+        $endpoint.Target = $OnPremIP
+        Write-Host "     New: $OnPremIP" -ForegroundColor Green
     }
 }
 
@@ -122,6 +122,6 @@ function Test-Endpoint {
 }
 
 Test-Endpoint "http://172.168.91.225" "Azure (port 80)"
-Test-Endpoint "http://66.242.207.21" "OnPrem (port 80)"
+Test-Endpoint "http://$OnPremIP" "OnPrem (port 80)"
 
 Write-Host ""

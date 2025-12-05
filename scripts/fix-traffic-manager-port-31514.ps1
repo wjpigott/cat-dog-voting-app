@@ -1,10 +1,19 @@
 # Fix Traffic Manager for Port 31514 (Now that it's working!)
+# Reads OnPrem IP from environment variable ONPREM_PUBLIC_IP
 
 param(
     [string]$ResourceGroup = "rg-cat-dog-voting",
     [string]$ProfileName = "voting-app-tm-2334-cstgesqvnzeko",
+    [string]$OnPremIP = $env:ONPREM_PUBLIC_IP,  # Set via: $env:ONPREM_PUBLIC_IP = "YOUR_IP"
     [switch]$DeletePort80Service
 )
+
+# Validate OnPrem IP
+if ([string]::IsNullOrEmpty($OnPremIP)) {
+    Write-Host "❌ ERROR: ONPREM_PUBLIC_IP environment variable not set!" -ForegroundColor Red
+    Write-Host "   Please set it first: `$env:ONPREM_PUBLIC_IP = `"YOUR_ONPREM_IP`"" -ForegroundColor Yellow
+    exit 1
+}
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "✅ FIX TRAFFIC MANAGER - PORT 31514 NOW WORKING!" -ForegroundColor Green
@@ -35,7 +44,7 @@ function Test-Endpoint {
 
 Test-Endpoint "http://172.168.91.225" "Port 80 service (172.168.91.225)"
 Test-Endpoint "http://172.169.36.153:31514" "Port 31514 service (172.169.36.153)"
-Test-Endpoint "http://66.242.207.21:31514" "OnPrem (66.242.207.21)"
+Test-Endpoint "http://$OnPremIP`:31514" "OnPrem ($OnPremIP)"
 
 Write-Host ""
 
@@ -110,8 +119,8 @@ foreach ($endpoint in $profile.Endpoints) {
     elseif ($endpoint.Name -like "*onprem*") {
         Write-Host "   Updating OnPrem endpoint: $($endpoint.Name)" -ForegroundColor Cyan
         Write-Host "     Old: $($endpoint.Target)" -ForegroundColor Gray
-        $endpoint.Target = "66.242.207.21"
-        Write-Host "     New: 66.242.207.21" -ForegroundColor Green
+        $endpoint.Target = $OnPremIP
+        Write-Host "     New: $OnPremIP" -ForegroundColor Green
     }
 }
 
@@ -163,5 +172,5 @@ Write-Host "📊 Final Service Configuration:" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "🎉 Done! Both environments now use port 31514" -ForegroundColor Green
 Write-Host "   ✅ Azure: 172.169.36.153:31514 (targetPort fixed to 5000)" -ForegroundColor Gray
-Write-Host "   ✅ OnPrem: 66.242.207.21:31514 (no router conflict)" -ForegroundColor Gray
+Write-Host "   ✅ OnPrem: $OnPremIP`:31514 (no router conflict)" -ForegroundColor Gray
 Write-Host ""

@@ -5,11 +5,19 @@ param(
     [string]$ResourceGroup = "rg-cat-dog-voting",
     [string]$ProfileName = "voting-app-tm-2334-cstgesqvnzeko",
     [string]$AzureIP = "172.168.91.225",  # Better version on port 80
-    [string]$OnPremIP = "66.242.207.21",
+    [string]$OnPremIP = $env:ONPREM_PUBLIC_IP,  # Set via environment variable
     [int]$Port = 80,  # Change to 31514 if using Option B
     [ValidateSet("HTTP", "TCP")]
     [string]$Protocol = "HTTP"  # Change to TCP if using port 31514
 )
+
+# Validate OnPrem IP
+if ([string]::IsNullOrEmpty($OnPremIP)) {
+    Write-Host "❌ ERROR: ONPREM_PUBLIC_IP environment variable not set!" -ForegroundColor Red
+    Write-Host "   Please set it first: `$env:ONPREM_PUBLIC_IP = `"YOUR_ONPREM_IP`"" -ForegroundColor Yellow
+    Write-Host "   Or see ENV_CONFIG.md for details" -ForegroundColor Yellow
+    exit 1
+}
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "🌍 TRAFFIC MANAGER UPDATE - PowerShell Module" -ForegroundColor Green

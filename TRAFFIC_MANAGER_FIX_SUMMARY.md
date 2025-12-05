@@ -15,7 +15,7 @@ After restarting your AKS cluster, you have **multiple services** running, which
 ### OnPrem:
 | IP Address | Port | Status |
 |------------|------|--------|
-| **66.242.207.21** | **31514** | ✅ **ONLINE** |
+| **YOUR_ONPREM_IP** | **31514** | ✅ **ONLINE** |
 
 ---
 

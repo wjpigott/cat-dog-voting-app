@@ -69,7 +69,7 @@ Write-Host ""
 # Call the traffic manager update script
 .\scripts\update-traffic-manager-powershell.ps1 `
     -AzureIP "172.169.36.153" `
-    -OnPremIP "66.242.207.21" `
+    -OnPremIP $env:ONPREM_PUBLIC_IP `
     -Port 31514 `
     -Protocol "TCP"
 
@@ -87,7 +87,7 @@ Write-Host "📝 What was done:" -ForegroundColor Yellow
 Write-Host "   ✅ Deleted old load balancer service (172.168.251.177)" -ForegroundColor Gray
 Write-Host "   ✅ Updated Traffic Manager to use port 31514 on both endpoints" -ForegroundColor Gray
 Write-Host "   ✅ Azure endpoint: 172.169.36.153:31514" -ForegroundColor Gray
-Write-Host "   ✅ OnPrem endpoint: 66.242.207.21:31514" -ForegroundColor Gray
+Write-Host "   ✅ OnPrem endpoint: $env:ONPREM_PUBLIC_IP`:31514" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "⏳ Wait 30-60 seconds for health checks to stabilize, then test:" -ForegroundColor Yellow
