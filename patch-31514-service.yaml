@@ -1,0 +1,5 @@
+spec:
+  ports:
+  - port: 31514
+    targetPort: 5000
+    protocol: TCP
