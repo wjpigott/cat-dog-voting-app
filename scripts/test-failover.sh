@@ -43,10 +43,10 @@ echo ""
 echo "4️⃣ Testing Individual Backends (for comparison)..."
 
 echo "🔷 Direct Azure Backend:"
-curl -s "http://52.154.54.110/api/results" | jq -r '"Environment: " + .environment + " | Total Votes: " + (.total_votes | tostring)' 2>/dev/null || echo "❌ Azure backend unreachable"
+curl -s "http://<azure-ip>/api/results" | jq -r '"Environment: " + .environment + " | Total Votes: " + (.total_votes | tostring)' 2>/dev/null || echo "❌ Azure backend unreachable"
 
 echo "🏠 Direct OnPrem Backend:" 
-curl -s "http://66.242.207.21:31514/api/results" | jq -r '"Environment: " + .environment + " | Total Votes: " + (.total_votes | tostring)' 2>/dev/null || echo "❌ OnPrem backend unreachable"
+curl -s "http://<onprem-ip>:31514/api/results" | jq -r '"Environment: " + .environment + " | Total Votes: " + (.total_votes | tostring)' 2>/dev/null || echo "❌ OnPrem backend unreachable"
 
 echo ""
 echo "🎯 Load Balancer Results:"

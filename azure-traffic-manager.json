@@ -11,7 +11,7 @@
     },
     "azureEndpoint": {
       "type": "string",
-      "defaultValue": "52.154.54.110",
+      "defaultValue": "<azure-ip>",
       "metadata": {
         "description": "Azure AKS endpoint"
       }

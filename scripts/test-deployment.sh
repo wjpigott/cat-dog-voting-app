@@ -16,7 +16,7 @@ fi
 echo ""
 echo "🏠 Testing on-premises environment..."
 # Assuming on-prem is accessible via known IP
-ONPREM_IP="66.242.207.21:31514"
+ONPREM_IP="<onprem-ip>:31514"
 echo "OnPrem UI: http://$ONPREM_IP"
 curl -s "http://$ONPREM_IP/api/results" | python3 -m json.tool || echo "❌ OnPrem API test failed"
 

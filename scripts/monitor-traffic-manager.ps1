@@ -74,7 +74,7 @@ while ($true) {
     
     # Check Azure
     try {
-        $azureCheck = Invoke-WebRequest -Uri "http://52.154.54.110" -Method HEAD -TimeoutSec 5 -ErrorAction Stop
+        $azureCheck = Invoke-WebRequest -Uri "http://<azure-ip>" -Method HEAD -TimeoutSec 5 -ErrorAction Stop
         Write-Host "   ✅ Azure AKS: Online (Status: $($azureCheck.StatusCode))" -ForegroundColor Green
     }
     catch {
@@ -83,7 +83,7 @@ while ($true) {
     
     # Check OnPrem
     try {
-        $onpremCheck = Invoke-WebRequest -Uri "http://66.242.207.21:31514" -Method HEAD -TimeoutSec 5 -ErrorAction Stop
+        $onpremCheck = Invoke-WebRequest -Uri "http://<onprem-ip>:31514" -Method HEAD -TimeoutSec 5 -ErrorAction Stop
         Write-Host "   ✅ OnPrem K3s: Online (Status: $($onpremCheck.StatusCode))" -ForegroundColor Green
     }
     catch {

@@ -8,7 +8,7 @@ param profileName string = 'voting-app-tm'
 param location string = resourceGroup().location
 
 @description('Azure AKS endpoint (when cluster is running)')
-param azureEndpoint string = '52.154.54.110'
+param azureEndpoint string = '<azure-ip>'
 
 @description('On-premises endpoint (always available)')
 param onpremEndpoint string = '<onprem-ip>'

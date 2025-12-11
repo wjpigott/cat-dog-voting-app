@@ -3,8 +3,8 @@
 
 param(
     [int]$CheckInterval = 10,
-    [string]$AzureEndpoint = "http://52.154.54.110",
-    [string]$OnPremEndpoint = "http://66.242.207.21:31514"
+    [string]$AzureEndpoint = "http://<azure-ip>",
+    [string]$OnPremEndpoint = "http://<onprem-ip>:31514"
 )
 
 function Test-Endpoint {

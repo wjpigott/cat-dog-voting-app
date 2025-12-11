@@ -7,8 +7,8 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
     # Default values if no config found
-    ONPREM_ENDPOINT="http://66.242.207.21:31514"
-    AZURE_LOAD_BALANCER_IP="52.154.54.110"
+    ONPREM_ENDPOINT="http://<onprem-ip>:31514"
+    AZURE_LOAD_BALANCER_IP="<azure-ip>"
 fi
 
 echo "🔍 Verifying Production Cat vs Dog Voting Environments..."
