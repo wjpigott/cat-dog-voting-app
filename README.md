@@ -12,9 +12,9 @@ A production-ready cross-environment voting application deployed across Azure AK
 ┌─────────────────────────────────────────────────────────────┐
 │           🌍 Azure Traffic Manager (Global DNS)            │
 │        (True HA - Independent of both environments)        │
-│   🎯 HA URL: http://<traffic-manager-url>:31514          │
+│   🎯 HA URL: http://<traffic-manager-url>:31514           │
 │   📊 Azure Direct: http://<azure-ip>:31514                │
-│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514             │
+│   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514              │
 └─────────────────────────────────────────────────────────────┘
                               │
                    ┌──────────┴──────────┐
