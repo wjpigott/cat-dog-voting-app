@@ -25,7 +25,7 @@ def get_onprem_votes():
     """Get votes from on-premises environment via API"""
     try:
         # Try to get on-premises votes from the API
-        response = requests.get('http://66.242.207.21:31514/api/results', timeout=5)
+        response = requests.get('http://<onprem-ip>:31514/api/results', timeout=5)
         if response.status_code == 200:
             data = response.json()
             return data.get('onprem_votes', {'cat': 0, 'dog': 0})

@@ -11,7 +11,7 @@ param location string = resourceGroup().location
 param azureEndpoint string = '52.154.54.110'
 
 @description('On-premises endpoint (always available)')
-param onpremEndpoint string = '66.242.207.21'
+param onpremEndpoint string = '<onprem-ip>'
 
 @description('On-premises port')
 param onpremPort int = 31514

@@ -10,7 +10,7 @@ else
     echo "⚠️  Customer config not found. Using default values."
     echo "💡 Create config/customer.env to customize for your environment."
     # Default values
-    ONPREM_ENDPOINT="http://66.242.207.21:31514"
+    ONPREM_ENDPOINT="http://<onprem-ip>:31514"
     AZURE_POSTGRES_HOST="postgres-cat-dog-voting.postgres.database.azure.com"
     AZURE_POSTGRES_USER="votinguser" 
     AZURE_POSTGRES_PASSWORD="SecureVotingPassword123!"
@@ -28,7 +28,7 @@ TEMP_DEPLOY="azure-voting-app-complete-configured.yaml"
 cp azure-voting-app-complete.yaml "$TEMP_DEPLOY"
 
 # Replace placeholders with actual values
-sed -i "s|value: \"http://66.242.207.21:31514\"|value: \"$ONPREM_ENDPOINT\"|g" "$TEMP_DEPLOY"
+sed -i "s|value: \"http://<onprem-ip>:31514\"|value: \"$ONPREM_ENDPOINT\"|g" "$TEMP_DEPLOY"
 sed -i "s|value: \"postgres-cat-dog-voting.postgres.database.azure.com\"|value: \"$AZURE_POSTGRES_HOST\"|g" "$TEMP_DEPLOY"
 sed -i "s|value: \"votinguser\"|value: \"$AZURE_POSTGRES_USER\"|g" "$TEMP_DEPLOY" 
 sed -i "s|value: \"SecureVotingPassword123!\"|value: \"$AZURE_POSTGRES_PASSWORD\"|g" "$TEMP_DEPLOY"

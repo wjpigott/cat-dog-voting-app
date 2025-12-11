@@ -29,7 +29,7 @@ spec:
         - name: AZURE_POSTGRES_DB
           value: "postgres"
         - name: ONPREM_ENDPOINT
-          value: "http://66.242.207.21:31514"
+          value: "http://<onprem-ip>:31514"
         command: ["/bin/bash", "-c"]
         args:
           - |
@@ -51,7 +51,7 @@ spec:
             AZURE_POSTGRES_USER = os.getenv('AZURE_POSTGRES_USER', 'votinguser')
             AZURE_POSTGRES_PASSWORD = os.getenv('AZURE_POSTGRES_PASSWORD', 'SecureVotingPassword123!')
             AZURE_POSTGRES_DB = os.getenv('AZURE_POSTGRES_DB', 'postgres')
-            ONPREM_ENDPOINT = os.getenv('ONPREM_ENDPOINT', 'http://66.242.207.21:31514')
+            ONPREM_ENDPOINT = os.getenv('ONPREM_ENDPOINT', 'http://<onprem-ip>:31514')
             
             def get_azure_votes():
                 try:

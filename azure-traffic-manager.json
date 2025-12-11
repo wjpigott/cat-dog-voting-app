@@ -18,7 +18,7 @@
     },
     "onpremEndpoint": {
       "type": "string",
-      "defaultValue": "66.242.207.21",
+      "defaultValue": "<onprem-ip>",
       "metadata": {
         "description": "On-premises endpoint"
       }
