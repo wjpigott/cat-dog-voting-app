@@ -65,8 +65,8 @@ Since Azure Arc might be complex, here's a simpler approach to monitor your on-p
 
 ### Option B: Custom HTTP Monitoring
 1. **Create Logic App** that pings both endpoints:
-   - Azure: http://52.154.54.110
-   - On-Prem: http://66.242.207.21:31514
+   - Azure: http://<azure-ip>
+   - On-Prem: http://<onprem-ip>:31514
 2. **Store results** in your Log Analytics workspace
 3. **Create alerts** based on response times/failures
 
@@ -127,8 +127,8 @@ After setup, you should have:
 - [ ] Basic alert rule created
 
 ### ✅ **Check your apps are working:**
-- [ ] Azure app: http://52.154.54.110 (responds)
-- [ ] On-prem app: http://66.242.207.21:31514 (responds)
+- [ ] Azure app: http://<azure-ip> (responds)
+- [ ] On-prem app: http://<onprem-ip>:31514 (responds)
 - [ ] Load test script works: `.\scripts\Run-SimplifiedTest.ps1`
 
 ## 🌟 **IMMEDIATE BENEFITS**

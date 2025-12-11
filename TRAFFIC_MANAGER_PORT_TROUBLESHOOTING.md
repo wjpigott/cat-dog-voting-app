@@ -3,8 +3,8 @@
 ## Problem: Traffic Manager Port Mismatch
 
 **Symptoms:**
-- Traffic Manager DNS resolves correctly (e.g., to `66.242.207.21`)
-- Direct endpoint access works (e.g., `http://66.242.207.21:31514`)
+- Traffic Manager DNS resolves correctly (e.g., to `<onprem-ip>`)
+- Direct endpoint access works (e.g., `http://<onprem-ip>:31514`)
 - Traffic Manager URL fails (e.g., `http://voting-app-tm-xxx.trafficmanager.net`)
 - Router login page appears instead of your application
 

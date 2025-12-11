@@ -2,14 +2,14 @@
 
 ## Current Production Setup
 
-**🎯 Traffic Manager URL:** `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
+**🎯 Traffic Manager URL:** `http://<traffic-manager-url>:31514`
 
 ### Endpoint Configuration
 
 | Environment | External IP | Port | Service Type | Status |
 |-------------|-------------|------|--------------|--------|
-| Azure AKS | 172.169.36.153 | 31514 | LoadBalancer | ✅ Active |
-| OnPrem K3s | 66.242.207.21 | 31514 | NodePort | ✅ Active |
+| Azure AKS | <azure-ip> | 31514 | LoadBalancer | ✅ Active |
+| OnPrem K3s | <onprem-ip> | 31514 | NodePort | ✅ Active |
 
 ### Traffic Manager Settings
 
@@ -41,9 +41,9 @@ kubectl expose deployment azure-voting-app-complete \
 ### Traffic Manager Update
 ```powershell
 # Update Azure endpoint to new LoadBalancer IP
-$profile = Get-AzTrafficManagerProfile -Name "voting-app-tm-2334-cstgesqvnzeko" -ResourceGroupName "rg-cat-dog-voting"
+$profile = Get-AzTrafficManagerProfile -Name "<traffic-manager-name>" -ResourceGroupName "<resource-group>"
 $azureEndpoint = $profile.Endpoints | Where-Object Name -eq "azure-aks-primary"
-$azureEndpoint.Target = "172.169.36.153"
+$azureEndpoint.Target = "<azure-ip>"
 Set-AzTrafficManagerProfile -TrafficManagerProfile $profile
 ```
 
@@ -52,13 +52,13 @@ Set-AzTrafficManagerProfile -TrafficManagerProfile $profile
 ### Individual Endpoints
 ```bash
 # Test Azure directly
-curl http://172.169.36.153:31514
+curl http://<azure-ip>:31514
 
 # Test OnPrem directly  
-curl http://66.242.207.21:31514
+curl http://$ONPREM_PUBLIC_IP:31514
 
 # Test Traffic Manager
-curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514
+curl http://<traffic-manager-url>:31514
 ```
 
 ### Failover Testing
@@ -67,7 +67,7 @@ curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514
 .\scripts\test-failover-analysis.ps1
 
 # Check Traffic Manager health
-Get-AzTrafficManagerProfile -Name "voting-app-tm-2334-cstgesqvnzeko" -ResourceGroupName "rg-cat-dog-voting" | 
+Get-AzTrafficManagerProfile -Name "<traffic-manager-name>" -ResourceGroupName "<resource-group>" | 
   Select-Object -ExpandProperty Endpoints | 
   Select-Object Name, Target, EndpointMonitorStatus
 ```

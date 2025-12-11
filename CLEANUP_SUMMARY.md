@@ -19,7 +19,7 @@ The following NGINX load balancer files have been moved to `archive/` as they ar
 - `LOAD_BALANCING.md` → `archive/LOAD_BALANCING.md`
 
 ## 🚀 **Current Solution: Azure Traffic Manager**
-- **Global URL**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net
+- **Global URL**: http://<traffic-manager-url>
 - **Enterprise SLA**: 99.99% uptime
 - **Health Monitoring**: 30-second automatic failover
 - **Global DNS**: Worldwide availability

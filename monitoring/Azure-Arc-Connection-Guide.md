@@ -7,7 +7,7 @@ The Azure Arc connection has **NOT** been completed yet. Here's how to do it:
 ## 🎯 **Prerequisites Check**
 
 ### 1. ✅ **Your Current Setup:**
-- ✅ On-premises cluster running at: `66.242.207.21:31514`
+- ✅ On-premises cluster running at: `<onprem-ip>:31514`
 - ✅ Cat/Dog voting app deployed and working
 - ✅ Log Analytics workspace created: `law-catdog-monitoring`
 - ❌ **Missing**: Azure Arc connection

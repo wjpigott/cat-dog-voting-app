@@ -10,8 +10,8 @@ This is a fully functional cross-environment voting application deployed across 
 ┌─────────────────────────────────────────────────────────────┐
 │              🌐 Cross-Environment Voting System                  │
 │           (Real-time data from both environments)           │
-│   📊 Azure UI: http://52.154.54.110 (Load Balanced)        │
-│   📊 OnPrem UI: http://66.242.207.21:31514                  │
+│   📊 Azure UI: http://<azure-ip> (Load Balanced)           │
+│   📊 OnPrem UI: http://<onprem-ip>:31514                   │
 │   🔗 APIs: /api/results, /vote, /health                     │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -21,7 +21,7 @@ This is a fully functional cross-environment voting application deployed across 
     │   🔷 Azure AKS      │           │   🏠 OnPrem K3s     │
     │   Voting App        │           │   Voting App        │
     │   (updates Azure)   │           │   (updates OnPrem)  │
-    │   52.154.54.110     │           │   66.242.207.21     │
+    │   <azure-ip>        │           │   <onprem-ip>       │
     └─────────────────────┘           └─────────────────────┘
                 │                                 │
                 ▼                                 ▼
@@ -42,14 +42,14 @@ This is a fully functional cross-environment voting application deployed across 
 ## 🚀 Deployed Services
 
 ### Azure AKS Cluster
-- **Main Load Balancer**: http://52.154.54.110 (voting-app-final-lb)
+- **Main Load Balancer**: http://<azure-ip> (voting-app-final-lb)
 - **Complete Voting App**: azure-voting-app-complete
 - **Database**: postgres-cat-dog-voting.postgres.database.azure.com
 - **Credentials**: votinguser/SecureVotingPassword123!
 
 ### On-Premises K3s
-- **Web Interface**: http://66.242.207.21:31514
-- **API Endpoint**: http://66.242.207.21:31514/api/results
+- **Web Interface**: http://<onprem-ip>:31514
+- **API Endpoint**: http://<onprem-ip>:31514/api/results
 - **Cross-Environment**: Reads from both local and Azure databases
 
 ## 🔧 Key Technical Achievements
@@ -72,7 +72,7 @@ This is a fully functional cross-environment voting application deployed across 
 **Issues Found & Fixed:**
 - **Wrong Target Port**: Main load balancer pointing to port 80 instead of 5000
 - **Service Selector**: Updated to point to correct deployment
-- **Result**: Main Azure load balancer (52.154.54.110) now serves complete UI
+- **Result**: Main Azure load balancer (<azure-ip>) now serves complete UI
 
 ### 4. ✅ UI/UX Parity
 - Both environments now have identical, modern voting interfaces
@@ -102,7 +102,7 @@ This is a fully functional cross-environment voting application deployed across 
 
 ### 2. **Load Balancer Routing Issues**
 - **Root Cause**: Main load balancer configured for wrong port and service
-- **Impact**: Main Azure URL (52.154.54.110) serving old basic app
+- **Impact**: Main Azure URL (<azure-ip>) serving old basic app
 - **Resolution**: Updated service selector and target port configuration
 - **Result**: Main load balancer now serves complete cross-environment UI
 
@@ -123,11 +123,11 @@ This is a fully functional cross-environment voting application deployed across 
 ### API Testing
 ```bash
 # Azure Environment
-curl http://52.154.54.110/api/results
+curl http://<azure-ip>/api/results
 # Returns: {"azure_votes":{"cat":4,"dog":3},"onprem_votes":{"cat":12,"dog":6},"total_votes":25}
 
 # On-Premises Environment  
-curl http://66.242.207.21:31514/api/results
+curl http://$ONPREM_PUBLIC_IP:31514/api/results
 # Returns: Combined vote totals from both environments
 ```
 
@@ -142,15 +142,15 @@ kubectl exec <pod> -- python3 -c "import psycopg2; conn = psycopg2.connect(...);
 ```bash
 # Main Azure Load Balancer
 kubectl get service voting-app-final-lb
-# Result: External IP 52.154.54.110 routing to correct app on port 5000
+# Result: External IP <azure-ip> routing to correct app on port 5000
 ```
 
 ## 🎯 Final Implementation Status
 
 | Component | Status | Verification |
 |-----------|--------|--------------|
-| Azure AKS Deployment | ✅ WORKING | Main UI accessible at 52.154.54.110 |
-| OnPrem K3s Deployment | ✅ WORKING | UI accessible at 66.242.207.21:31514 |
+| Azure AKS Deployment | ✅ WORKING | Main UI accessible at <azure-ip> |
+| OnPrem K3s Deployment | ✅ WORKING | UI accessible at <onprem-ip>:31514 |
 | Azure PostgreSQL | ✅ CONNECTED | Correct credentials, 4🐱 3🐶 votes |
 | OnPrem Database | ✅ CONNECTED | Local database with 12🐱 6🐶 votes |
 | Cross-Environment Queries | ✅ WORKING | Both apps show combined totals |

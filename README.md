@@ -12,8 +12,8 @@ A production-ready cross-environment voting application deployed across Azure AK
 ┌─────────────────────────────────────────────────────────────┐
 │           🌍 Azure Traffic Manager (Global DNS)            │
 │        (True HA - Independent of both environments)        │
-│   🎯 HA URL: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514 │
-│   📊 Azure Direct: http://172.169.36.153:31514             │
+│   🎯 HA URL: http://<traffic-manager-url>:31514          │
+│   📊 Azure Direct: http://<azure-ip>:31514                │
 │   🏠 OnPrem Direct: http://xx.xx.xx.xx:31514             │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -31,7 +31,7 @@ A production-ready cross-environment voting application deployed across Azure AK
 ┌─────────────────┐  ┌─────────────────┐
 │  🔷 Azure AKS   │  │  🏠 OnPrem K3s │
 │  Primary Backend│  │  Backup Backend │
-│ 172.169.36.153  │  │ xx.xx.xx.xx   │
+│ <azure-ip>      │  │ xx.xx.xx.xx   │
 │   Weight: 3     │  │   Weight: 1     │
 │ ❤️Health: TCP:31514│  │ ❤️Health: TCP:31514│
 └─────────────────┘  └─────────────────┘
@@ -46,8 +46,8 @@ A production-ready cross-environment voting application deployed across Azure AK
 ```
 
 ## 🎯 Current Status
-- **🌍 Traffic Manager**: http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514
-- **Azure Cloud**: 172.169.36.153:31514 (LoadBalancer)
+- **🌍 Traffic Manager**: http://<traffic-manager-url>:31514
+- **Azure Cloud**: <azure-ip>:31514 (LoadBalancer)
 - **OnPrem**: xx.xx.xx.xx:31514 (NodePort)
 - **Monitoring**: TCP port 31514 (both endpoints)
 - **On-Premises**: 12 Cats 🐱, 8 Dogs 🐶  
@@ -81,7 +81,7 @@ This project now uses **Azure Traffic Manager** for true enterprise-grade high a
 ### 🎯 **Traffic Manager Architecture:**
 ```
 🌍 Global DNS (Traffic Manager)
-├── Priority 1: Azure AKS (172.169.36.153:31514) 
+├── Priority 1: Azure AKS (<azure-ip>:31514) 
 └── Priority 2: OnPrem K3s (xx.xx.xx.xx:31514)
 ```
 
@@ -135,10 +135,10 @@ AZURE_POSTGRES_PASSWORD="your-password"
 **Example Test Commands:**
 ```bash
 # Test Traffic Manager (high availability - recommended)
-curl http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net/api/results
+curl http://<traffic-manager-url>/api/results
 
 # Test individual environments
-curl http://52.154.54.110/api/results      # Azure direct
+curl http://<azure-ip>/api/results         # Azure direct
 curl http://xx.xx.xx.xx:31514/api/results  # OnPrem direct
 ```
 
@@ -217,12 +217,12 @@ kubectl expose deployment voting-app --type=LoadBalancer --port=80 --target-port
 
 ### Access Points
 <<<<<<< HEAD
-- **🌍 Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
-- **🔷 Azure Direct**: `http://172.169.36.153:31514`  
+- **🌍 Traffic Manager** (Recommended): `http://<traffic-manager-url>:31514`
+- **🔷 Azure Direct**: `http://<azure-ip>:31514`  
 - **🏠 OnPrem Direct**: `http://xx.xx.xx.xx:31514`
 =======
-- **� Traffic Manager** (Recommended): `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
-- **🔷 Azure Direct**: `http://52.154.54.110`  
+- **🌍 Traffic Manager** (Recommended): `http://<traffic-manager-url>`
+- **🔷 Azure Direct**: `http://<azure-ip>`
 - **🏠 OnPrem Direct**: `http://xx.xx.xx.xx:31514`
 >>>>>>> 05685f60bd726295a77d5067ad8eb44ebc974a87
 

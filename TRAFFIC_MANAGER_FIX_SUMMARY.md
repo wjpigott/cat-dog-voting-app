@@ -8,9 +8,9 @@ After restarting your AKS cluster, you have **multiple services** running, which
 
 | IP Address | Port | Service Name | Status | Notes |
 |------------|------|--------------|--------|-------|
-| **172.168.91.225** | **80** | azure-voting-app-complete-service | ✅ **ONLINE** | **BETTER VERSION - USE THIS** |
-| 172.168.251.177 | 80 | voting-load-balancer-service | ❌ Offline | **OLD - DELETE THIS** |
-| 172.169.36.153 | 31514 | voting-app-31514-lb | ❌ Offline | For Traffic Manager compatibility |
+| **<azure-ip-1>** | **80** | azure-voting-app-complete-service | ✅ **ONLINE** | **BETTER VERSION - USE THIS** |
+| <azure-ip-2> | 80 | voting-load-balancer-service | ❌ Offline | **OLD - DELETE THIS** |
+| <azure-ip-3> | 31514 | voting-app-31514-lb | ❌ Offline | For Traffic Manager compatibility |
 
 ### OnPrem:
 | IP Address | Port | Status |
@@ -47,7 +47,7 @@ kubectl delete deployment voting-load-balancer
 
 **2. Azure is already on port 80:** ✅
 - Service: `azure-voting-app-complete-service`
-- IP: `172.168.91.225:80`
+- IP: `<azure-ip>:80`
 
 **3. Change OnPrem to port 80:**
 
@@ -74,14 +74,14 @@ kubectl patch service <your-voting-service-name> --type='json' \
 ```powershell
 # Run from this repo
 .\scripts\update-traffic-manager-powershell.ps1 `
-  -AzureIP "172.168.91.225" `
-  -OnPremIP "66.242.207.21" `
+  -AzureIP "<azure-ip>" `
+  -OnPremIP "$env:ONPREM_PUBLIC_IP" `
   -Port 80 `
   -Protocol "HTTP"
 ```
 
 **Result:**
-- Traffic Manager URL: `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net`
+- Traffic Manager URL: `http://<traffic-manager-url>`
 - Standard HTTP port (no port number needed in URL)
 - Better monitoring with HTTP health checks
 
@@ -115,14 +115,14 @@ kubectl rollout restart deployment azure-voting-app-complete
 ```powershell
 # Run from this repo
 .\scripts\update-traffic-manager-powershell.ps1 `
-  -AzureIP "172.169.36.153" `
-  -OnPremIP "66.242.207.21" `
+  -AzureIP "<azure-ip>" `
+  -OnPremIP "$env:ONPREM_PUBLIC_IP" `
   -Port 31514 `
   -Protocol "TCP"
 ```
 
 **Result:**
-- Traffic Manager URL: `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`
+- Traffic Manager URL: `http://<traffic-manager-url>:31514`
 - No OnPrem changes needed
 - Simpler TCP monitoring
 
@@ -144,7 +144,7 @@ cd c:\repos\SQLAIChat\sqlaichat
 1. Change OnPrem to port 80 (see Option A step 3 above)
 2. Run Traffic Manager update:
 ```powershell
-.\scripts\update-traffic-manager-powershell.ps1 -AzureIP "172.168.91.225" -OnPremIP "66.242.207.21" -Port 80 -Protocol "HTTP"
+.\scripts\update-traffic-manager-powershell.ps1 -AzureIP "<azure-ip>" -OnPremIP "$env:ONPREM_PUBLIC_IP" -Port 80 -Protocol "HTTP"
 ```
 
 ### Step 2B: For Port 31514 Option (RECOMMENDED - Easier)
@@ -157,14 +157,14 @@ cd c:\repos\SQLAIChat\sqlaichat
 
 2. Run Traffic Manager update:
 ```powershell
-.\scripts\update-traffic-manager-powershell.ps1 -AzureIP "172.169.36.153" -OnPremIP "66.242.207.21" -Port 31514 -Protocol "TCP"
+.\scripts\update-traffic-manager-powershell.ps1 -AzureIP "<azure-ip>" -OnPremIP "$env:ONPREM_PUBLIC_IP" -Port 31514 -Protocol "TCP"
 ```
 
 ---
 
 ## 🔍 Why Port 31514 Service Shows Offline
 
-The service `voting-app-31514-lb (172.169.36.153:31514)` showed offline in the test, but this might be because:
+The service `voting-app-31514-lb (<azure-ip>:31514)` showed offline in the test, but this might be because:
 
 1. **Azure was just restarted** - LoadBalancer IPs take time to stabilize
 2. **Health endpoint might be on different path** - HTTP test might fail but TCP would work
@@ -186,11 +186,11 @@ After making changes:
 .\kubectl-temp.exe get pods
 
 # Test endpoints directly
-Invoke-WebRequest -Uri "http://172.168.91.225" -Method Head
-Invoke-WebRequest -Uri "http://66.242.207.21:31514" -Method Head
+Invoke-WebRequest -Uri "http://<azure-ip>" -Method Head
+Invoke-WebRequest -Uri "http://$env:ONPREM_PUBLIC_IP:31514" -Method Head
 
 # Test Traffic Manager (after update)
-Invoke-WebRequest -Uri "http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514" -Method Head
+Invoke-WebRequest -Uri "http://<traffic-manager-url>:31514" -Method Head
 ```
 
 ---
@@ -220,7 +220,7 @@ If you run into issues:
 2. **Service won't start**: Check pod logs with `kubectl logs <pod-name>`
 3. **Traffic Manager not updating**: Use Azure Portal as backup:
    - Go to https://portal.azure.com
-   - Find Traffic Manager: `voting-app-tm-2334-cstgesqvnzeko`
+   - Find Traffic Manager: `<traffic-manager-name>`
    - Manually update endpoints and monitoring port
 
 ---

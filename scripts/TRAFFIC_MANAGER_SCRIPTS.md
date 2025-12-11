@@ -64,7 +64,7 @@ All scripts require:
 
 ## 🎯 Success Criteria
 
-✅ **Working Traffic Manager URL:** `http://voting-app-tm-2334-cstgesqvnzeko.trafficmanager.net:31514`  
+✅ **Working Traffic Manager URL:** `http://<traffic-manager-url>:31514`  
 ✅ **Both endpoints on port 31514:** Azure and OnPrem consistent  
 ✅ **TCP monitoring:** Simple and reliable  
 ✅ **Automatic failover:** Tested and confirmed working  
