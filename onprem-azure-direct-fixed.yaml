@@ -114,7 +114,8 @@ spec:
                         user=os.getenv('AZURE_POSTGRES_USER', 'votinguser'),
                         password=os.getenv('AZURE_POSTGRES_PASSWORD', 'SecureVotingPassword123!'),
                         port=5432,
-                        sslmode='require'
+                        sslmode='require',
+                        connect_timeout=3
                     )
                     print("✅ Azure PostgreSQL connection successful!")
                     
